@@ -1,6 +1,6 @@
-# FUQNRTCDemoDroid 快速接入文档
+# FUQiniuRTCDemoDroid 快速接入文档
 
-FUQNRTCDemoDroid 是集成了 Faceunity 面部跟踪和虚拟道具功能 和 七牛RTC Demo  的 Demo。
+FUQiniuRTCDemoDroid 是集成了 Faceunity 面部跟踪和虚拟道具功能 和 七牛RTC Demo  的 Demo。
 
 本文是 FaceUnity SDK 快速对 七牛RTC Demo 的导读说明，关于 `FaceUnity SDK` 的详细说明，请参看 **[FULiveDemoDroid](https://github.com/Faceunity/FULiveDemoDroid/tree/dev)**
 
