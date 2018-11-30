@@ -2,30 +2,28 @@ package com.faceunity;
 
 import android.content.Context;
 import android.hardware.Camera;
+import android.opengl.GLES20;
+import android.opengl.Matrix;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
 import android.support.annotation.NonNull;
-import android.text.TextUtils;
 import android.util.Log;
 
 import com.faceunity.entity.Effect;
 import com.faceunity.entity.Filter;
-import com.faceunity.entity.Makeup;
-import com.faceunity.utils.Constant;
+import com.faceunity.gles.FullFrameRect;
+import com.faceunity.gles.Texture2dProgram;
 import com.faceunity.wrapper.faceunity;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 
 import static com.faceunity.wrapper.faceunity.FU_ADM_FLAG_FLIP_X;
+import static com.faceunity.wrapper.faceunity.FU_ADM_FLAG_FLIP_Y;
 
 /**
  * 一个基于Faceunity Nama SDK的简单封装，方便简单集成，理论上简单需求的步骤：
@@ -37,10 +35,8 @@ import static com.faceunity.wrapper.faceunity.FU_ADM_FLAG_FLIP_X;
  * <p>
  * 如果您有更高级的定制需求，Nama API文档请参考http://www.faceunity.com/technical/android-api.html
  */
-public class FURenderer implements OnFUControlListener {
+public class FURenderer implements OnFaceUnityControlListener {
     private static final String TAG = FURenderer.class.getSimpleName();
-
-    public static final int FU_ADM_FLAG_EXTERNAL_OES_TEXTURE = faceunity.FU_ADM_FLAG_EXTERNAL_OES_TEXTURE;
 
     private Context mContext;
 
@@ -61,44 +57,34 @@ public class FURenderer implements OnFUControlListener {
 
     //美颜和滤镜的默认参数
     private boolean isNeedUpdateFaceBeauty = true;
-    private static float mFilterLevel = 1.0f;//滤镜强度
-    private static Filter mFilterName = new Filter("origin");
+    private float mFaceBeautyFilterLevel = 1.0f;//滤镜强度
+    private Filter mFilterName = FilterEnum.ziran.filter();
 
-    private static float mSkinDetect = 1.0f;//精准磨皮
-    private static float mHeavyBlur = 0.0f;//美肤类型
-    private static float mBlurLevel = 0.7f;//磨皮
-    private static float mColorLevel = 0.5f;//美白
-    private static float mRedLevel = 0.5f;//红润
-    private static float mEyeBright = 0.0f;//亮眼
-    private static float mToothWhiten = 0.0f;//美牙
+    private float mFaceBeautyALLBlurLevel = 1.0f;//精准磨皮
+    private float mFaceBeautyType = 0.0f;//美肤类型
+    private float mFaceBeautyBlurLevel = 0.7f;//磨皮
+    private float mFaceBeautyColorLevel = 0.5f;//美白
+    private float mFaceBeautyRedLevel = 0.5f;//红润
+    private float mBrightEyesLevel = 0.0f;//亮眼
+    private float mBeautyTeethLevel = 0.0f;//美牙
 
-    private static float mFaceShape = 4.0f;//脸型
-    private static float mFaceShapeLevel = 1.0f;//程度
-    private static float mEyeEnlarging = 0.4f;//大眼
-    private static float mCheekThinning = 0.4f;//瘦脸
-    private static float mIntensityChin = 0.3f;//下巴
-    private static float mIntensityForehead = 0.3f;//额头
-    private static float mIntensityNose = 0.5f;//瘦鼻
-    private static float mIntensityMouth = 0.4f;//嘴形
+    private float mFaceBeautyFaceShape = 4.0f;//脸型
+    private float mFaceShapeLevel = 1.0f;//程度
+    private float mFaceBeautyEnlargeEye = 0.4f;//大眼
+    private float mFaceBeautyCheekThin = 0.4f;//瘦脸
+    private float mChinLevel = 0.3f;//下巴
+    private float mForeheadLevel = 0.3f;//额头
+    private float mThinNoseLevel = 0.5f;//瘦鼻
+    private float mMouthShape = 0.4f;//嘴形
 
     private int mFrameId = 0;
 
     private static final int ITEM_ARRAYS_FACE_BEAUTY_INDEX = 0;
     private static final int ITEM_ARRAYS_EFFECT = 1;
     private static final int ITEM_ARRAYS_EFFECT_ABIMOJI_3D = 2;
-    private static final int ITEM_ARRAYS_FACE_MAKEUP_EYE_SHADOW_INDEX = 3;
-    private static final int ITEM_ARRAYS_FACE_MAKEUP_EYE_LINER_INDEX = 4;
-    private static final int ITEM_ARRAYS_FACE_MAKEUP_EYELASH_INDEX = 5;
-    private static final int ITEM_ARRAYS_FACE_MAKEUP_CONTACT_LENS_INDEX = 6;
-    private static final int ITEM_ARRAYS_FACE_MAKEUP_EYEBROW_INDEX = 7;
-    private static final int ITEM_ARRAYS_FACE_MAKEUP_LIPSTICK_INDEX = 8;
-    private static final int ITEM_ARRAYS_FACE_MAKEUP_BLUSHER_INDEX = 9;
-
-    private static final int ITEM_ARRAYS_COUNT = 10;
+    private static final int ITEM_ARRAYS_COUNT = 3;
     //美颜和其他道具的handle数组
     private final int[] mItemsArray = new int[ITEM_ARRAYS_COUNT];
-    //用于和异步加载道具的线程交互
-    private HandlerThread mFuItemHandlerThread;
     private Handler mFuItemHandler;
 
     private boolean isNeedFaceBeauty = true;
@@ -119,7 +105,7 @@ public class FURenderer implements OnFUControlListener {
     private float[] pupilPosData = new float[2];
     private float[] rotationModeData = new float[1];
 
-    private List<Runnable> mEventQueue;
+    private ArrayList<Runnable> mEventQueue = new ArrayList<>();
 
     /**
      * 全局加载相应的底层数据包
@@ -177,9 +163,9 @@ public class FURenderer implements OnFUControlListener {
     /**
      * 获取证书相关的权限码
      */
-    public static int getModuleCode() {
-        return faceunity.fuGetModuleCode(0);
-    }
+//    public static int getModuleCode() {
+//        return faceunity.fuGetModuleCode(0);
+//    }
 
     /**
      * FURenderer构造函数
@@ -187,6 +173,10 @@ public class FURenderer implements OnFUControlListener {
     private FURenderer(Context context, boolean isCreateEGLContext) {
         this.mContext = context;
         this.mIsCreateEGLContext = isCreateEGLContext;
+
+        HandlerThread fuItemHandlerThread = new HandlerThread("FUItemHandlerThread");
+        fuItemHandlerThread.start();
+        mFuItemHandler = new FUItemHandler(fuItemHandlerThread.getLooper());
     }
 
     /**
@@ -194,44 +184,38 @@ public class FURenderer implements OnFUControlListener {
      */
     public void onSurfaceCreated() {
         Log.e(TAG, "onSurfaceCreated");
-        onSurfaceDestroyed();
-
-        mEventQueue = Collections.synchronizedList(new ArrayList<Runnable>());
-
-        mFuItemHandlerThread = new HandlerThread("FUItemHandlerThread");
-        mFuItemHandlerThread.start();
-        mFuItemHandler = new FUItemHandler(mFuItemHandlerThread.getLooper());
-
         /**
          * fuCreateEGLContext 创建OpenGL环境
          * 适用于没OpenGL环境时调用
          * 如果调用了fuCreateEGLContext，在销毁时需要调用fuReleaseEGLContext
          */
-        if (mIsCreateEGLContext) faceunity.fuCreateEGLContext();
+        if (mIsCreateEGLContext)
+            faceunity.fuCreateEGLContext();
 
         mFrameId = 0;
         /**
-         *fuSetExpressionCalibration 控制表情校准功能的开关及不同模式，参数为0时关闭表情校准，2为被动校准。
-         * 被动校准：该种模式下会在整个用户使用过程中逐渐进行表情校准，用户对该过程没有明显感觉。
-         *
-         * 优化后的SDK只支持被动校准功能，即fuSetExpressionCalibration接口只支持0（关闭）或2（被动校准）这两个数字，设置为1时将不再有效果。
+         *fuSetExpressionCalibration 控制表情校准功能的开关及不同模式，参数为0时关闭表情校准，1为主动校准，2为被动校准。
+         * 被动校准：该种模式下会在整个用户使用过程中逐渐进行表情校准，用户对该过程没有明显感觉。该种校准的强度相比主动校准较弱。
+         * 主动校准：老版本的表情校准模式。该种模式下系统会进行快速集中的表情校准，一般为初次识别到人脸之后的2-3秒钟。
+         *          在该段时间内，需要用户尽量保持无表情状态，该过程结束后再开始使用。该过程的开始和结束可以通过 fuGetFaceInfo 接口获取参数 is_calibrating
+         * 适用于使用Animoji和avatar功能的用户
          */
         faceunity.fuSetExpressionCalibration(2);
+        faceunity.fuSetDefaultOrientation((360 - mInputImageOrientation) / 90);//设置多脸，识别人脸默认方向，能够提高首次识别的速度
         faceunity.fuSetMaxFaces(mMaxFaces);//设置多脸，目前最多支持8人。
 
         if (isNeedFaceBeauty) {
-            mFuItemHandler.sendEmptyMessage(ITEM_ARRAYS_FACE_BEAUTY_INDEX);
+            mFuItemHandler.sendEmptyMessage(FUItemHandler.HANDLE_CREATE_BEAUTY_ITEM);
         }
 
         if (isNeedAnimoji3D) {
-            mFuItemHandler.sendEmptyMessage(ITEM_ARRAYS_EFFECT_ABIMOJI_3D);
+            mFuItemHandler.sendEmptyMessage(FUItemHandler.HANDLE_CREATE_ANIMOJI3D_ITEM);
         }
 
         //加载默认道具
         if (mDefaultEffect != null) {
-            mItemsArray[ITEM_ARRAYS_EFFECT] = mDefaultEffect.effectType() == Effect.EFFECT_TYPE_NONE ? 0 : loadItem(mDefaultEffect.path());
-            updateEffectItemParams(mDefaultEffect, mItemsArray[ITEM_ARRAYS_EFFECT]);
-            setMaxFaces(mDefaultEffect.maxFace());
+            mItemsArray[ITEM_ARRAYS_EFFECT] = loadItem(mDefaultEffect);
+            faceunity.fuSetMaxFaces(mDefaultEffect.maxFace());
         }
     }
 
@@ -254,9 +238,11 @@ public class FURenderer implements OnFUControlListener {
         if (mCurrentCameraType != Camera.CameraInfo.CAMERA_FACING_FRONT)
             flags |= FU_ADM_FLAG_FLIP_X;
 
-        if (mNeedBenchmark) mFuCallStartTime = System.nanoTime();
+        if (mNeedBenchmark)
+            mFuCallStartTime = System.nanoTime();
         int fuTex = faceunity.fuRenderToNV21Image(img, w, h, mFrameId++, mItemsArray, flags);
-        if (mNeedBenchmark) mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
+        if (mNeedBenchmark)
+            mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
         return fuTex;
     }
 
@@ -282,10 +268,12 @@ public class FURenderer implements OnFUControlListener {
         if (mCurrentCameraType != Camera.CameraInfo.CAMERA_FACING_FRONT)
             flags |= FU_ADM_FLAG_FLIP_X;
 
-        if (mNeedBenchmark) mFuCallStartTime = System.nanoTime();
+        if (mNeedBenchmark)
+            mFuCallStartTime = System.nanoTime();
         int fuTex = faceunity.fuRenderToNV21Image(img, w, h, mFrameId++, mItemsArray, flags,
                 readBackW, readBackH, readBackImg);
-        if (mNeedBenchmark) mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
+        if (mNeedBenchmark)
+            mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
         return fuTex;
     }
 
@@ -305,13 +293,15 @@ public class FURenderer implements OnFUControlListener {
         }
         prepareDrawFrame();
 
-        int flags = mInputTextureType | mInputImageFormat;
-        if (mCurrentCameraType != Camera.CameraInfo.CAMERA_FACING_FRONT)
-            flags |= FU_ADM_FLAG_FLIP_X;
+        int flags = mInputImageFormat | mInputTextureType | FU_ADM_FLAG_FLIP_X;
+//        if (mCurrentCameraType != Camera.CameraInfo.CAMERA_FACING_BACK)
+//            flags |= FU_ADM_FLAG_FLIP_X;
 
-        if (mNeedBenchmark) mFuCallStartTime = System.nanoTime();
+        if (mNeedBenchmark)
+            mFuCallStartTime = System.nanoTime();
         int fuTex = faceunity.fuDualInputToTexture(img, tex, flags, w, h, mFrameId++, mItemsArray);
-        if (mNeedBenchmark) mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
+        if (mNeedBenchmark)
+            mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
         return fuTex;
     }
 
@@ -338,15 +328,19 @@ public class FURenderer implements OnFUControlListener {
         if (mCurrentCameraType != Camera.CameraInfo.CAMERA_FACING_FRONT)
             flags |= FU_ADM_FLAG_FLIP_X;
 
-        if (mNeedBenchmark) mFuCallStartTime = System.nanoTime();
+        if (mNeedBenchmark)
+            mFuCallStartTime = System.nanoTime();
         int fuTex = faceunity.fuDualInputToTexture(img, tex, flags, w, h, mFrameId++, mItemsArray,
                 readBackW, readBackH, readBackImg);
-        if (mNeedBenchmark) mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
+        if (mNeedBenchmark)
+            mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
         return fuTex;
     }
 
     /**
-     * 单输入接口(fuRenderToTexture)
+     * 单美颜接口(fuBeautifyImage)，将输入的图像数据，送入SDK流水线进行全图美化，并输出处理之后的图像数据。
+     * 该接口仅执行图像层面的美化处 理（包括滤镜、美肤），不执行人脸跟踪及所有人脸相关的操作（如美型）。
+     * 由于功能集中，相比 fuDualInputToTexture 接口执行美颜道具，该接口所需计算更少，执行效率更高。
      *
      * @param tex 纹理ID
      * @param w
@@ -361,36 +355,35 @@ public class FURenderer implements OnFUControlListener {
         prepareDrawFrame();
 
         int flags = mInputTextureType;
-        if (mCurrentCameraType != Camera.CameraInfo.CAMERA_FACING_FRONT)
-            flags |= FU_ADM_FLAG_FLIP_X;
 
-        if (mNeedBenchmark) mFuCallStartTime = System.nanoTime();
+        if (mNeedBenchmark)
+            mFuCallStartTime = System.nanoTime();
         int fuTex = faceunity.fuRenderToTexture(tex, w, h, mFrameId++, mItemsArray, flags);
-        if (mNeedBenchmark) mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
+        if (mNeedBenchmark)
+            mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
         return fuTex;
     }
 
     /**
-     * 单美颜接口(fuBeautifyImage)，将输入的图像数据，送入SDK流水线进行全图美化，并输出处理之后的图像数据。
-     * 该接口仅执行图像层面的美化处 理（包括滤镜、美肤），不执行人脸跟踪及所有人脸相关的操作（如美型）。
-     * 由于功能集中，相比 fuDualInputToTexture 接口执行美颜道具，该接口所需计算更少，执行效率更高。
+     * 单输入接口(fuRenderToYUVImage)
      *
-     * @param tex 纹理ID
      * @param w
      * @param h
      * @return
      */
-    public int onDrawFrameBeautify(int tex, int w, int h) {
-        if (tex <= 0 || w <= 0 || h <= 0) {
+    public int onDrawFrameYUV(byte[] yFuBytes, byte[] uFuBytes, byte[] vFuBytes, int w, int h) {
+        if (yFuBytes == null || uFuBytes == null || vFuBytes == null || w <= 0 || h <= 0) {
             Log.e(TAG, "onDrawFrame date null");
             return 0;
         }
         prepareDrawFrame();
 
-        int flags = mInputTextureType;
+        int flags = mInputImageFormat;
+        if (mCurrentCameraType != Camera.CameraInfo.CAMERA_FACING_FRONT)
+            flags |= FU_ADM_FLAG_FLIP_X;
 
         if (mNeedBenchmark) mFuCallStartTime = System.nanoTime();
-        int fuTex = faceunity.fuBeautifyImage(tex, flags, w, h, mFrameId++, mItemsArray);
+        int fuTex = faceunity.fuRenderToYUVImage(yFuBytes, uFuBytes, vFuBytes, w, w / 2, w / 2, w, h, mFrameId, mItemsArray, flags);
         if (mNeedBenchmark) mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
         return fuTex;
     }
@@ -413,7 +406,11 @@ public class FURenderer implements OnFUControlListener {
         prepareDrawFrame();
 
         int flags = mInputImageFormat;
-        if (mNeedBenchmark) mFuCallStartTime = System.nanoTime();
+        if (mCurrentCameraType != Camera.CameraInfo.CAMERA_FACING_FRONT)
+            flags |= FU_ADM_FLAG_FLIP_X;
+
+        if (mNeedBenchmark)
+            mFuCallStartTime = System.nanoTime();
         faceunity.fuTrackFace(img, flags, w, h);
 
         /**
@@ -454,7 +451,8 @@ public class FURenderer implements OnFUControlListener {
 
         int tex = faceunity.fuAvatarToTexture(pupilPosData, expressionData, rotationData, rotationModeData,
                 0, w, h, mFrameId++, mItemsArray, isTracking);
-        if (mNeedBenchmark) mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
+        if (mNeedBenchmark)
+            mOneHundredFrameFUTime += System.nanoTime() - mFuCallStartTime;
         return tex;
     }
 
@@ -462,24 +460,21 @@ public class FURenderer implements OnFUControlListener {
      * 销毁faceunity相关的资源
      */
     public void onSurfaceDestroyed() {
-        Log.e(TAG, "onSurfaceDestroyed");
-        if (mFuItemHandlerThread != null) {
-            mFuItemHandlerThread.quitSafely();
-            mFuItemHandlerThread = null;
-            mFuItemHandler = null;
-        }
-        if (mEventQueue != null) {
-            mEventQueue.clear();
-            mEventQueue = null;
-        }
+        mFuItemHandler.removeMessages(FUItemHandler.HANDLE_CREATE_ITEM);
 
         mFrameId = 0;
         isNeedUpdateFaceBeauty = true;
         Arrays.fill(mItemsArray, 0);
         faceunity.fuDestroyAllItems();
         faceunity.fuOnDeviceLost();
-        faceunity.fuDone();
-        if (mIsCreateEGLContext) faceunity.fuReleaseEGLContext();
+        mEventQueue.clear();
+        if (mIsCreateEGLContext)
+            faceunity.fuReleaseEGLContext();
+    }
+
+    //是否是前置摄像头
+    public boolean isFRONT() {
+        return mCurrentCameraType == Camera.CameraInfo.CAMERA_FACING_FRONT;
     }
 
     /**
@@ -497,54 +492,59 @@ public class FURenderer implements OnFUControlListener {
 
         //获取faceunity错误信息，并调用回调接口
         int error = faceunity.fuGetSystemError();
-        if (error != 0)
-            Log.e(TAG, "fuGetSystemErrorString " + faceunity.fuGetSystemErrorString(error));
         if (mOnSystemErrorListener != null && error != 0) {
-            mOnSystemErrorListener.onSystemError(faceunity.fuGetSystemErrorString(error));
+            mOnSystemErrorListener.onSystemError(error == 0 ? "" : faceunity.fuGetSystemErrorString(error));
+        }
+
+        //获取是否正在表情校准，并调用回调接口
+        final float[] isCalibratingTmp = new float[1];
+        faceunity.fuGetFaceInfo(0, "is_calibrating", isCalibratingTmp);
+        if (mOnCalibratingListener != null && isCalibratingTmp[0] != mIsCalibrating) {
+            mOnCalibratingListener.OnCalibrating(mIsCalibrating = isCalibratingTmp[0]);
         }
 
         //修改美颜参数
         if (isNeedUpdateFaceBeauty && mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX] != 0) {
             //filter_level 滤镜强度 范围0~1 SDK默认为 1
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "filter_level", mFilterLevel);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "filter_level", mFaceBeautyFilterLevel);
             //filter_name 滤镜
             faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "filter_name", mFilterName.filterName());
 
             //skin_detect 精准美肤 0:关闭 1:开启 SDK默认为 0
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "skin_detect", mSkinDetect);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "skin_detect", mFaceBeautyALLBlurLevel);
             //heavy_blur 美肤类型 0:清晰美肤 1:朦胧美肤 SDK默认为 0
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "heavy_blur", mHeavyBlur);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "heavy_blur", mFaceBeautyType);
             //blur_level 磨皮 范围0~6 SDK默认为 6
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "blur_level", 6 * mBlurLevel);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "blur_level", 6 * mFaceBeautyBlurLevel);
             //blur_blend_ratio 磨皮结果和原图融合率 范围0~1 SDK默认为 1
 //          faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "blur_blend_ratio", 1);
 
             //color_level 美白 范围0~1 SDK默认为 1
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "color_level", mColorLevel);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "color_level", mFaceBeautyColorLevel);
             //red_level 红润 范围0~1 SDK默认为 1
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "red_level", mRedLevel);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "red_level", mFaceBeautyRedLevel);
             //eye_bright 亮眼 范围0~1 SDK默认为 0
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "eye_bright", mEyeBright);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "eye_bright", mBrightEyesLevel);
             //tooth_whiten 美牙 范围0~1 SDK默认为 0
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "tooth_whiten", mToothWhiten);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "tooth_whiten", mBeautyTeethLevel);
 
 
             //face_shape_level 美型程度 范围0~1 SDK默认为1
             faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "face_shape_level", mFaceShapeLevel);
-            //face_shape 脸型 0：女神 1：网红 2：自然 3：默认 4：自定义（新版美型） SDK默认为 3
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "face_shape", mFaceShape);
+            //face_shape 脸型 0：女神 1：网红 2：自然 3：默认 SDK默认为 3
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "face_shape", mFaceBeautyFaceShape);
             //eye_enlarging 大眼 范围0~1 SDK默认为 0
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "eye_enlarging", mEyeEnlarging);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "eye_enlarging", mFaceBeautyEnlargeEye);
             //cheek_thinning 瘦脸 范围0~1 SDK默认为 0
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "cheek_thinning", mCheekThinning);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "cheek_thinning", mFaceBeautyCheekThin);
             //intensity_chin 下巴 范围0~1 SDK默认为 0.5    大于0.5变大，小于0.5变小
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "intensity_chin", mIntensityChin);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "intensity_chin", mChinLevel);
             //intensity_forehead 额头 范围0~1 SDK默认为 0.5    大于0.5变大，小于0.5变小
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "intensity_forehead", mIntensityForehead);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "intensity_forehead", mForeheadLevel);
             //intensity_nose 鼻子 范围0~1 SDK默认为 0
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "intensity_nose", mIntensityNose);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "intensity_nose", mThinNoseLevel);
             //intensity_mouth 嘴型 范围0~1 SDK默认为 0.5   大于0.5变大，小于0.5变小
-            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "intensity_mouth", mIntensityMouth);
+            faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX], "intensity_mouth", mMouthShape);
             isNeedUpdateFaceBeauty = false;
         }
 
@@ -560,18 +560,9 @@ public class FURenderer implements OnFUControlListener {
      * 类似GLSurfaceView的queueEvent机制
      */
     public void queueEvent(Runnable r) {
-        if (mEventQueue == null) return;
         mEventQueue.add(r);
     }
 
-    /**
-     * 类似GLSurfaceView的queueEvent机制,保护在快速切换界面时进行的操作是当前界面的加载操作
-     */
-    private void queueEventItemHandle(Runnable r) {
-        if (mFuItemHandlerThread == null || Thread.currentThread().getId() != mFuItemHandlerThread.getId())
-            return;
-        queueEvent(r);
-    }
 
     /**
      * 设置需要识别的人脸个数
@@ -602,195 +593,154 @@ public class FURenderer implements OnFUControlListener {
         queueEvent(new Runnable() {
             @Override
             public void run() {
-                mFrameId = 0;
                 mCurrentCameraType = currentCameraType;
                 mInputImageOrientation = inputImageOrientation;
                 faceunity.fuOnCameraChange();
-                updateEffectItemParams(mDefaultEffect, mItemsArray[ITEM_ARRAYS_EFFECT]);
+                updateEffectItemParams(mItemsArray[ITEM_ARRAYS_EFFECT]);
+                faceunity.fuSetDefaultOrientation((360 - mInputImageOrientation) / 90);
+                changeInputType();
             }
         });
     }
 
-    private int mDefaultOrientation;
-
-    public void setTrackOrientation(final int rotation) {
-        if (mTrackingStatus == 0 && mDefaultOrientation != rotation) {
-            queueEvent(new Runnable() {
-                @Override
-                public void run() {
-                    mDefaultOrientation = rotation;
-                    faceunity.fuSetDefaultOrientation(rotation / 90);//设置识别人脸默认方向，能够提高首次识别的速度
-                }
-            });
-        }
+    public void setInputImageOrientation(int mInputImageOrientation) {
+        this.mInputImageOrientation = mInputImageOrientation;
     }
 
+    /**
+     * 音乐滤镜设置时间
+     *
+     * @param musicTime
+     */
+    @Override
+    public void onMusicFilterTime(final long musicTime) {
+        queueEvent(new Runnable() {
+            @Override
+            public void run() {
+                faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_EFFECT], "music_time", musicTime);
+            }
+        });
+    }
+
+    /**
+     * 本demo中切换输入接口时需要用到，用于解决绿屏问题。实际使用中无需使用。
+     */
     public void changeInputType() {
         queueEvent(new Runnable() {
             @Override
             public void run() {
+                if (mItemsArray[ITEM_ARRAYS_EFFECT] > 0)
+                    faceunity.fuDestroyItem(mItemsArray[ITEM_ARRAYS_EFFECT]);
                 mFrameId = 0;
+                if (mDefaultEffect != null)
+                    mItemsArray[ITEM_ARRAYS_EFFECT] = loadItem(mDefaultEffect);
             }
         });
-    }
-
-    public void setDefaultEffect(Effect defaultEffect) {
-        mDefaultEffect = defaultEffect;
     }
 
     //--------------------------------------美颜参数与道具回调----------------------------------------
 
     @Override
-    public void onMusicFilterTime(final long time) {
-        queueEvent(new Runnable() {
-            @Override
-            public void run() {
-                faceunity.fuItemSetParam(mItemsArray[ITEM_ARRAYS_EFFECT], "music_time", time);
-            }
-        });
-    }
-
-    @Override
     public void onEffectSelected(Effect effectItemName) {
-        mDefaultEffect = effectItemName;
-        if (mDefaultEffect == null) return;
-        if (mFuItemHandler == null) {
-            queueEvent(new Runnable() {
-                @Override
-                public void run() {
-                    mFuItemHandler.removeMessages(ITEM_ARRAYS_EFFECT);
-                    mFuItemHandler.sendMessage(Message.obtain(mFuItemHandler, ITEM_ARRAYS_EFFECT, mDefaultEffect));
-                }
-            });
-        } else {
-            mFuItemHandler.removeMessages(ITEM_ARRAYS_EFFECT);
-            mFuItemHandler.sendMessage(Message.obtain(mFuItemHandler, ITEM_ARRAYS_EFFECT, mDefaultEffect));
-        }
+        createItem(mDefaultEffect = effectItemName);
     }
 
     @Override
     public void onFilterLevelSelected(float progress) {
         isNeedUpdateFaceBeauty = true;
-        mFilterLevel = progress;
+        mFaceBeautyFilterLevel = progress;
     }
 
     @Override
-    public void onFilterNameSelected(Filter filterName) {
+    public void onFilterSelected(Filter filterName) {
         isNeedUpdateFaceBeauty = true;
-        mFilterName = filterName;
+        this.mFilterName = filterName;
     }
 
     @Override
-    public void onMakeupSelected(final Makeup makeup) {
-        if (makeup == null) return;
-        final int what = getIndexMakeup(makeup.makeupType());
-        if (mFuItemHandler == null) {
-            queueEvent(new Runnable() {
-                @Override
-                public void run() {
-                    mFuItemHandler.removeMessages(what);
-                    mFuItemHandler.sendMessage(Message.obtain(mFuItemHandler, what, makeup));
-                }
-            });
-        } else {
-            mFuItemHandler.removeMessages(what);
-            mFuItemHandler.sendMessage(Message.obtain(mFuItemHandler, what, makeup));
-        }
-    }
-
-    @Override
-    public void onMakeupLevelSelected(final int makeupType, final float level) {
-        queueEvent(new Runnable() {
-            @Override
-            public void run() {
-                faceunity.fuItemSetParam(mItemsArray[getIndexMakeup(makeupType)], "makeup_intensity", level);
-            }
-        });
-    }
-
-    @Override
-    public void onSkinDetectSelected(float isOpen) {
+    public void onALLBlurLevelSelected(float isAll) {
         isNeedUpdateFaceBeauty = true;
-        mSkinDetect = isOpen;
+        mFaceBeautyALLBlurLevel = isAll;
     }
 
     @Override
-    public void onHeavyBlurSelected(float isOpen) {
+    public void onBeautySkinTypeSelected(float isAll) {
         isNeedUpdateFaceBeauty = true;
-        mHeavyBlur = isOpen;
+        mFaceBeautyType = isAll;
     }
 
     @Override
     public void onBlurLevelSelected(float level) {
         isNeedUpdateFaceBeauty = true;
-        mBlurLevel = level;
+        mFaceBeautyBlurLevel = level;
     }
 
     @Override
-    public void onColorLevelSelected(float level) {
+    public void onColorLevelSelected(float progress) {
         isNeedUpdateFaceBeauty = true;
-        mColorLevel = level;
+        mFaceBeautyColorLevel = progress;
     }
 
 
     @Override
-    public void onRedLevelSelected(float level) {
+    public void onRedLevelSelected(float progress) {
         isNeedUpdateFaceBeauty = true;
-        mRedLevel = level;
+        mFaceBeautyRedLevel = progress;
     }
 
     @Override
-    public void onEyeBrightSelected(float level) {
+    public void onBrightEyesSelected(float progress) {
         isNeedUpdateFaceBeauty = true;
-        mEyeBright = level;
+        mBrightEyesLevel = progress;
     }
 
     @Override
-    public void onToothWhitenSelected(float level) {
+    public void onBeautyTeethSelected(float progress) {
         isNeedUpdateFaceBeauty = true;
-        mToothWhiten = level;
+        mBeautyTeethLevel = progress;
     }
 
     @Override
     public void onFaceShapeSelected(float faceShape) {
         isNeedUpdateFaceBeauty = true;
-        mFaceShape = faceShape;
+        this.mFaceBeautyFaceShape = faceShape;
     }
 
     @Override
-    public void onEyeEnlargeSelected(float level) {
+    public void onEnlargeEyeSelected(float progress) {
         isNeedUpdateFaceBeauty = true;
-        mEyeEnlarging = level;
+        mFaceBeautyEnlargeEye = progress;
+    }
+
+
+    @Override
+    public void onCheekThinSelected(float progress) {
+        isNeedUpdateFaceBeauty = true;
+        mFaceBeautyCheekThin = progress;
     }
 
     @Override
-    public void onCheekThinningSelected(float level) {
+    public void onChinLevelSelected(float progress) {
         isNeedUpdateFaceBeauty = true;
-        mCheekThinning = level;
+        mChinLevel = progress;
     }
 
     @Override
-    public void onIntensityChinSelected(float level) {
+    public void onForeheadLevelSelected(float progress) {
         isNeedUpdateFaceBeauty = true;
-        mIntensityChin = level;
+        mForeheadLevel = progress;
     }
 
     @Override
-    public void onIntensityForeheadSelected(float level) {
+    public void onThinNoseLevelSelected(float progress) {
         isNeedUpdateFaceBeauty = true;
-        mIntensityForehead = level;
+        mThinNoseLevel = progress;
     }
 
     @Override
-    public void onIntensityNoseSelected(float level) {
+    public void onMouthShapeSelected(float progress) {
         isNeedUpdateFaceBeauty = true;
-        mIntensityNose = level;
-    }
-
-    @Override
-    public void onIntensityMouthSelected(float level) {
-        isNeedUpdateFaceBeauty = true;
-        mIntensityMouth = level;
+        mMouthShape = progress;
     }
 
     //--------------------------------------IsTracking（人脸识别回调相关定义）----------------------------------------
@@ -811,6 +761,17 @@ public class FURenderer implements OnFUControlListener {
 
     private OnSystemErrorListener mOnSystemErrorListener;
 
+    //--------------------------------------mIsCalibrating（表情校准回调相关定义）----------------------------------------
+
+    private float mIsCalibrating = 0;
+
+    public interface OnCalibratingListener {
+        void OnCalibrating(float isCalibrating);
+
+    }
+
+    private OnCalibratingListener mOnCalibratingListener;
+
     //--------------------------------------FPS（FPS相关定义）----------------------------------------
 
     private static final float NANO_IN_ONE_MILLI_SECOND = 1000000.0f;
@@ -828,7 +789,8 @@ public class FURenderer implements OnFUControlListener {
     }
 
     private void benchmarkFPS() {
-        if (!mNeedBenchmark) return;
+        if (!mNeedBenchmark)
+            return;
         if (++mCurrentFrameCnt == TIME) {
             mCurrentFrameCnt = 0;
             long tmp = System.nanoTime();
@@ -845,7 +807,18 @@ public class FURenderer implements OnFUControlListener {
 
     //--------------------------------------道具（异步加载道具）----------------------------------------
 
+    public void createItem(Effect item) {
+        if (item == null)
+            return;
+        mFuItemHandler.removeMessages(FUItemHandler.HANDLE_CREATE_ITEM);
+        mFuItemHandler.sendMessage(Message.obtain(mFuItemHandler, FUItemHandler.HANDLE_CREATE_ITEM, item));
+    }
+
     class FUItemHandler extends Handler {
+
+        static final int HANDLE_CREATE_ITEM = 1;
+        static final int HANDLE_CREATE_BEAUTY_ITEM = 2;
+        static final int HANDLE_CREATE_ANIMOJI3D_ITEM = 3;
 
         FUItemHandler(Looper looper) {
             super(looper);
@@ -856,88 +829,47 @@ public class FURenderer implements OnFUControlListener {
             super.handleMessage(msg);
             switch (msg.what) {
                 //加载道具
-                case ITEM_ARRAYS_EFFECT:
+                case HANDLE_CREATE_ITEM:
                     final Effect effect = (Effect) msg.obj;
-                    if (effect == null) break;
-                    final int finalItem = effect.effectType() == Effect.EFFECT_TYPE_NONE ? 0 : loadItem(effect.path());
-                    queueEventItemHandle(new Runnable() {
+                    final int newEffectItem = loadItem(effect);
+                    queueEvent(new Runnable() {
                         @Override
                         public void run() {
                             if (mItemsArray[ITEM_ARRAYS_EFFECT] > 0) {
                                 faceunity.fuDestroyItem(mItemsArray[ITEM_ARRAYS_EFFECT]);
                             }
-                            if (finalItem > 0) {
-                                updateEffectItemParams(effect, finalItem);
-                                setMaxFaces(effect.maxFace());
-                            }
-                            mItemsArray[ITEM_ARRAYS_EFFECT] = finalItem;
+                            mItemsArray[ITEM_ARRAYS_EFFECT] = newEffectItem;
+                            setMaxFaces(effect.maxFace());
                         }
                     });
                     break;
                 //加载美颜bundle
-                case ITEM_ARRAYS_FACE_BEAUTY_INDEX:
-                    final int itemBeauty = loadItem(BUNDLE_face_beautification);
-                    queueEventItemHandle(new Runnable() {
-                        @Override
-                        public void run() {
-                            mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX] = itemBeauty;
-                            isNeedUpdateFaceBeauty = true;
-                        }
-                    });
+                case HANDLE_CREATE_BEAUTY_ITEM:
+                    try {
+                        InputStream beauty = mContext.getAssets().open(BUNDLE_face_beautification);
+                        byte[] beautyData = new byte[beauty.available()];
+                        beauty.read(beautyData);
+                        beauty.close();
+                        mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX] = faceunity.fuCreateItemFromPackage(beautyData);
+                        isNeedUpdateFaceBeauty = true;
+                        Log.e(TAG, "face beauty item handle " + mItemsArray[ITEM_ARRAYS_FACE_BEAUTY_INDEX]);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                     break;
                 //加载animoji道具3D抗锯齿bundle
-                case ITEM_ARRAYS_EFFECT_ABIMOJI_3D:
-                    final int itemAnimoji = loadItem(BUNDLE_animoji_3d);
-                    queueEventItemHandle(new Runnable() {
-                        @Override
-                        public void run() {
-                            mItemsArray[ITEM_ARRAYS_EFFECT_ABIMOJI_3D] = itemAnimoji;
-                        }
-                    });
-                    break;
-                //加载美妆bundle
-                default:
-                    final Makeup makeup = (Makeup) msg.obj;
-                    if (TextUtils.isEmpty(makeup.path())) {
-                        queueEventItemHandle(new Runnable() {
-                            @Override
-                            public void run() {
-                                faceunity.fuItemSetParam(mItemsArray[getIndexMakeup(makeup.makeupType())], "makeup_intensity", 0);
-                            }
-                        });
-                    } else {
-                        final int item = loadItem(makeup.path());
-                        queueEventItemHandle(new Runnable() {
-                            @Override
-                            public void run() {
-                                mItemsArray[getIndexMakeup(makeup.makeupType())] = item;
-                                faceunity.fuItemSetParam(item, "makeup_intensity", makeup.getLevel());
-                            }
-                        });
+                case HANDLE_CREATE_ANIMOJI3D_ITEM:
+                    try {
+                        InputStream animoji3D = mContext.getAssets().open(BUNDLE_animoji_3d);
+                        byte[] animoji3DData = new byte[animoji3D.available()];
+                        animoji3D.read(animoji3DData);
+                        animoji3D.close();
+                        mItemsArray[ITEM_ARRAYS_EFFECT_ABIMOJI_3D] = faceunity.fuCreateItemFromPackage(animoji3DData);
+                    } catch (IOException e) {
+                        e.printStackTrace();
                     }
                     break;
             }
-        }
-    }
-
-    private int getIndexMakeup(int makeType) {
-        switch (makeType) {
-            case Makeup.MAKEUP_TYPE_LIPSTICK:
-                return ITEM_ARRAYS_FACE_MAKEUP_LIPSTICK_INDEX;
-            case Makeup.MAKEUP_TYPE_EYEBROW:
-                return ITEM_ARRAYS_FACE_MAKEUP_EYEBROW_INDEX;
-            case Makeup.MAKEUP_TYPE_EYE_SHADOW:
-                return ITEM_ARRAYS_FACE_MAKEUP_EYE_SHADOW_INDEX;
-            case Makeup.MAKEUP_TYPE_EYE_LINER:
-                return ITEM_ARRAYS_FACE_MAKEUP_EYE_LINER_INDEX;
-            case Makeup.MAKEUP_TYPE_EYELASH:
-                return ITEM_ARRAYS_FACE_MAKEUP_EYELASH_INDEX;
-            case Makeup.MAKEUP_TYPE_CONTACT_LENS:
-                return ITEM_ARRAYS_FACE_MAKEUP_CONTACT_LENS_INDEX;
-            case Makeup.MAKEUP_TYPE_BLUSHER:
-                return ITEM_ARRAYS_FACE_MAKEUP_BLUSHER_INDEX;
-            default:
-                return 0;
         }
     }
 
@@ -947,22 +879,22 @@ public class FURenderer implements OnFUControlListener {
      * @param bundle（Effect本demo定义的道具实体类）
      * @return 大于0时加载成功
      */
-    private int loadItem(String bundle) {
+    private int loadItem(Effect bundle) {
         int item = 0;
         try {
-            if (TextUtils.isEmpty(bundle)) {
+            if (bundle.effectType() == Effect.EFFECT_TYPE_NONE) {
                 item = 0;
             } else {
-                InputStream is = bundle.startsWith(Constant.filePath) ? new FileInputStream(new File(bundle)) : mContext.getAssets().open(bundle);
+                InputStream is = mContext.getAssets().open(bundle.path());
                 byte[] itemData = new byte[is.available()];
                 int len = is.read(itemData);
-                Log.e(TAG, bundle + " len " + len);
+                Log.e(TAG, bundle.path() + " len " + len);
                 is.close();
                 item = faceunity.fuCreateItemFromPackage(itemData);
+                updateEffectItemParams(item);
             }
         } catch (IOException e) {
             e.printStackTrace();
-            item = 0;
         }
         return item;
     }
@@ -972,28 +904,27 @@ public class FURenderer implements OnFUControlListener {
      *
      * @param itemHandle
      */
-    private void updateEffectItemParams(Effect effect, final int itemHandle) {
-        if (effect == null || itemHandle == 0) return;
-        faceunity.fuItemSetParam(itemHandle, "isAndroid", 1.0);
+    private void updateEffectItemParams(final int itemHandle) {
+        queueEvent(new Runnable() {
+            @Override
+            public void run() {
+                faceunity.fuItemSetParam(itemHandle, "isAndroid", 1.0);
 
-        if (effect.effectType() == Effect.EFFECT_TYPE_NORMAL) {
-            //rotationAngle 参数是用于旋转普通道具
-            faceunity.fuItemSetParam(itemHandle, "rotationAngle", 360 - mInputImageOrientation);
-        }
-        if (effect.effectType() == Effect.EFFECT_TYPE_ANIMOJI || effect.effectType() == Effect.EFFECT_TYPE_PORTRAIT_DRIVE) {
-            //这两句代码用于识别人脸默认方向的修改，主要针对animoji道具的切换摄像头倒置问题
-            faceunity.fuItemSetParam(itemHandle, "camera_change", 1.0);
-            faceunity.fuSetDefaultRotationMode((360 - mInputImageOrientation) / 90);
-            //is3DFlipH 参数是用于对3D道具的镜像
-            faceunity.fuItemSetParam(itemHandle, "is3DFlipH", mCurrentCameraType == Camera.CameraInfo.CAMERA_FACING_BACK ? 1 : 0);
-            //isFlipExpr 参数是用于对人像驱动道具的镜像
-            faceunity.fuItemSetParam(itemHandle, "isFlipExpr", mCurrentCameraType == Camera.CameraInfo.CAMERA_FACING_BACK ? 1 : 0);
-        }
-        if (effect.effectType() == Effect.EFFECT_TYPE_GESTURE) {
-            //loc_y_flip与loc_x_flip 参数是用于对手势识别道具的镜像
-            faceunity.fuItemSetParam(itemHandle, "loc_y_flip", mCurrentCameraType == Camera.CameraInfo.CAMERA_FACING_BACK ? 1 : 0);
-            faceunity.fuItemSetParam(itemHandle, "loc_x_flip", mCurrentCameraType == Camera.CameraInfo.CAMERA_FACING_BACK ? 1 : 0);
-        }
+                //rotationAngle 参数是用于旋转普通道具
+                faceunity.fuItemSetParam(itemHandle, "rotationAngle", 360 - mInputImageOrientation);
+
+                //这两句代码用于识别人脸默认方向的修改，主要针对animoji道具的切换摄像头倒置问题
+                faceunity.fuItemSetParam(itemHandle, "camera_change", 1.0);
+                faceunity.fuSetDefaultOrientation((360 - mInputImageOrientation) / 90);
+                //is3DFlipH 参数是用于对3D道具的镜像
+                faceunity.fuItemSetParam(itemHandle, "is3DFlipH", mCurrentCameraType == Camera.CameraInfo.CAMERA_FACING_BACK ? 1 : 0);
+                //isFlipExpr 参数是用于对人像驱动道具的镜像
+                faceunity.fuItemSetParam(itemHandle, "isFlipExpr", mCurrentCameraType == Camera.CameraInfo.CAMERA_FACING_BACK ? 1 : 0);
+                //loc_y_flip与loc_x_flip 参数是用于对手势识别道具的镜像
+                faceunity.fuItemSetParam(itemHandle, "loc_y_flip", mCurrentCameraType == Camera.CameraInfo.CAMERA_FACING_BACK ? 1 : 0);
+                faceunity.fuItemSetParam(itemHandle, "loc_x_flip", mCurrentCameraType == Camera.CameraInfo.CAMERA_FACING_BACK ? 1 : 0);
+            }
+        });
     }
 
     //--------------------------------------Builder----------------------------------------
@@ -1005,7 +936,7 @@ public class FURenderer implements OnFUControlListener {
 
         private boolean createEGLContext = false;
         private Effect defaultEffect;
-        private int maxFaces = 1;
+        private int maxFaces = 4;
         private Context context;
         private int inputTextureType = 0;
         private boolean needReadBackImage = false;
@@ -1013,156 +944,76 @@ public class FURenderer implements OnFUControlListener {
         private int inputImageRotation = 90;
         private boolean isNeedAnimoji3D = false;
         private boolean isNeedFaceBeauty = true;
-        private int currentCameraType = Camera.CameraInfo.CAMERA_FACING_FRONT;
 
         private OnFUDebugListener onFUDebugListener;
         private OnTrackingStatusChangedListener onTrackingStatusChangedListener;
+        private OnCalibratingListener onCalibratingListener;
         private OnSystemErrorListener onSystemErrorListener;
 
         public Builder(@NonNull Context context) {
             this.context = context;
         }
 
-        /**
-         * 是否需要自己创建EGLContext
-         *
-         * @param createEGLContext
-         * @return
-         */
         public Builder createEGLContext(boolean createEGLContext) {
             this.createEGLContext = createEGLContext;
             return this;
         }
 
-        /**
-         * 是否需要立即加载道具
-         *
-         * @param defaultEffect
-         * @return
-         */
         public Builder defaultEffect(Effect defaultEffect) {
             this.defaultEffect = defaultEffect;
             return this;
         }
 
-        /**
-         * 识别最大人脸数
-         *
-         * @param maxFaces
-         * @return
-         */
         public Builder maxFaces(int maxFaces) {
             this.maxFaces = maxFaces;
             return this;
         }
 
-        /**
-         * 传入纹理的类型（传入数据没有纹理则无需调用）
-         * camera OES纹理：1
-         * 普通2D纹理：2
-         *
-         * @param textureType
-         * @return
-         */
         public Builder inputTextureType(int textureType) {
             this.inputTextureType = textureType;
             return this;
         }
 
-        /**
-         * 是否需要把处理后的数据回写到byte[]中
-         *
-         * @param needReadBackImage
-         * @return
-         */
         public Builder needReadBackImage(boolean needReadBackImage) {
             this.needReadBackImage = needReadBackImage;
             return this;
         }
 
-        /**
-         * 输入的byte[]数据类型
-         *
-         * @param inputImageFormat
-         * @return
-         */
         public Builder inputImageFormat(int inputImageFormat) {
             this.inputImageFormat = inputImageFormat;
             return this;
         }
 
-        /**
-         * 输入的画面数据方向
-         *
-         * @param inputImageRotation
-         * @return
-         */
         public Builder inputImageOrientation(int inputImageRotation) {
             this.inputImageRotation = inputImageRotation;
             return this;
         }
 
-        /**
-         * 是否需要3D道具的抗锯齿功能
-         *
-         * @param needAnimoji3D
-         * @return
-         */
         public Builder setNeedAnimoji3D(boolean needAnimoji3D) {
             this.isNeedAnimoji3D = needAnimoji3D;
             return this;
         }
 
-        /**
-         * 是否需要美颜效果
-         *
-         * @param needFaceBeauty
-         * @return
-         */
         public Builder setNeedFaceBeauty(boolean needFaceBeauty) {
             isNeedFaceBeauty = needFaceBeauty;
             return this;
         }
 
-        /**
-         * 当前的摄像头（前后置摄像头）
-         *
-         * @param cameraType
-         * @return
-         */
-        public Builder setCurrentCameraType(int cameraType) {
-            currentCameraType = cameraType;
-            return this;
-        }
-
-        /**
-         * 设置debug数据回调
-         *
-         * @param onFUDebugListener
-         * @return
-         */
         public Builder setOnFUDebugListener(OnFUDebugListener onFUDebugListener) {
             this.onFUDebugListener = onFUDebugListener;
             return this;
         }
 
-        /**
-         * 设置是否检查到人脸的回调
-         *
-         * @param onTrackingStatusChangedListener
-         * @return
-         */
         public Builder setOnTrackingStatusChangedListener(OnTrackingStatusChangedListener onTrackingStatusChangedListener) {
             this.onTrackingStatusChangedListener = onTrackingStatusChangedListener;
             return this;
         }
 
-        /**
-         * 设置SDK使用错误回调
-         *
-         * @param onSystemErrorListener
-         * @return
-         */
+        public Builder setOnCalibratingListener(OnCalibratingListener onCalibratingListener) {
+            this.onCalibratingListener = onCalibratingListener;
+            return this;
+        }
+
         public Builder setOnSystemErrorListener(OnSystemErrorListener onSystemErrorListener) {
             this.onSystemErrorListener = onSystemErrorListener;
             return this;
@@ -1178,13 +1029,191 @@ public class FURenderer implements OnFUControlListener {
             fuRenderer.mDefaultEffect = defaultEffect;
             fuRenderer.isNeedAnimoji3D = isNeedAnimoji3D;
             fuRenderer.isNeedFaceBeauty = isNeedFaceBeauty;
-            fuRenderer.mCurrentCameraType = currentCameraType;
 
             fuRenderer.mOnFUDebugListener = onFUDebugListener;
             fuRenderer.mOnTrackingStatusChangedListener = onTrackingStatusChangedListener;
+            fuRenderer.mOnCalibratingListener = onCalibratingListener;
             fuRenderer.mOnSystemErrorListener = onSystemErrorListener;
             return fuRenderer;
         }
 
+    }
+
+    private static boolean isInit;
+
+    private FullFrameRect mFullScreenFUDisplay;
+
+    private volatile int cameraWidth, cameraHeight;
+
+    private volatile byte[] mCameraNV21Byte;
+    private byte[] fuImgNV21Bytes;
+
+    private int mCameraRotate;
+    private int mCameraId;
+    private float[] mCameraMatrix1;
+    private float[] mCameraMatrix2;
+
+    private boolean isActive = false;
+
+    public void loadItems() {
+        if (!isInit) {
+            isInit = true;
+            initFURenderer(mContext);
+        }
+        onSurfaceCreated();
+        mFullScreenFUDisplay = new FullFrameRect(new Texture2dProgram(
+                Texture2dProgram.ProgramType.TEXTURE_2D));
+
+        cameraWidth = 0;
+        cameraHeight = 0;
+
+        mCameraNV21Byte = null;
+
+        isActive = true;
+    }
+
+    public void destroyItems() {
+        isActive = false;
+
+        onSurfaceDestroyed();
+
+        deleteFBO();
+    }
+
+    public boolean isActive() {
+        return isActive;
+    }
+
+    public void setActive(boolean isActive) {
+        this.isActive = isActive;
+    }
+
+    public int onDrawFrame(int texId, int texWidth, int texHeight, float[] transformMatrix) {
+        if (!isActive) {
+            return texId;
+        }
+
+//        byte[] mCameraNV21Byte = this.mCameraNV21Byte;
+//        if (mCameraNV21Byte == null || mCameraNV21Byte.length == 0 || mCameraNV21Byte.length != texWidth * texHeight * 3 / 2) {
+//            Log.e(TAG, "camera nv21 bytes null");
+//            return texId;
+//        }
+        createFBO(texWidth, texHeight);
+
+        int[] fbo = new int[1];
+        GLES20.glGetIntegerv(GLES20.GL_FRAMEBUFFER_BINDING, fbo, 0);
+
+        int[] originalViewPort = new int[4];
+        GLES20.glGetIntegerv(GLES20.GL_VIEWPORT, originalViewPort, 0);
+
+//        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fboId[1]);
+//
+//        float[] matrix = new float[16];
+//        Matrix.setIdentityM(matrix, 0);
+//
+//        GLES20.glViewport(0,0, texWidth, texHeight);
+//        mFullScreenFUDisplay.drawFrame(texId, matrix);
+
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fboId[0]);
+
+//        byte[] bytes = new byte[texWidth * texHeight * 3 / 2];
+//        int fuTex = onDrawFrame(texId, texWidth, texHeight);
+//        this.fuImgNV21Bytes = bytes;
+
+        GLES20.glViewport(0, 0, texWidth, texHeight);
+
+        mFullScreenFUDisplay.drawFrame(texId, transformMatrix);
+
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo[0]);
+
+        GLES20.glViewport(originalViewPort[0], originalViewPort[1], originalViewPort[2], originalViewPort[3]);
+        return fboTex[0];
+    }
+
+    public boolean onPreviewFrame(byte[] data, int width, int height, int rotation, int fmt, long timestampNs) {
+//        mCameraNV21Byte = data;
+//
+//        if (mCameraRotate != rotation || mCameraId != mCurrentCameraId || mCameraMatrix1 == null || mCameraMatrix2 == null) {
+//            mCameraRotate = rotation;
+//            mCameraId = mCurrentCameraId;
+//            mCameraMatrix1 = new float[16];
+//            mCameraMatrix2 = new float[16];
+//            if (mCameraId == Camera.CameraInfo.CAMERA_FACING_FRONT) {
+//                Matrix.setRotateM(mCameraMatrix1, 0, mCameraRotate, 0F, 0F, 1F);
+//                Matrix.setRotateM(mCameraMatrix2, 0, -mCameraRotate, 0F, 0F, 1F);
+//            } else {
+//                Matrix.setIdentityM(mCameraMatrix1, 0);
+//                mCameraMatrix1[0] = -1;
+//                Matrix.rotateM(mCameraMatrix1, 0, -mCameraRotate, 0F, 0F, 1F);
+//                Matrix.setIdentityM(mCameraMatrix2, 0);
+//                mCameraMatrix2[0] = -1;
+//                Matrix.rotateM(mCameraMatrix2, 0, -mCameraRotate, 0F, 0F, 1F);
+//            }
+//        }
+        return false;
+    }
+
+    private int fboId[];
+    private int fboTex[];
+    private int renderBufferId[];
+
+    private int fboWidth, fboHeight;
+
+    private void createFBO(int width, int height) {
+        if (fboTex != null && (fboWidth != width || fboHeight != height)) {
+            deleteFBO();
+        }
+
+        fboWidth = width;
+        fboHeight = height;
+
+        if (fboTex == null) {
+            fboId = new int[1];
+            fboTex = new int[1];
+            renderBufferId = new int[1];
+
+//generate fbo id
+            GLES20.glGenFramebuffers(1, fboId, 0);
+//generate texture
+            GLES20.glGenTextures(1, fboTex, 0);
+//generate render buffer
+            GLES20.glGenRenderbuffers(1, renderBufferId, 0);
+
+            for (int i = 0; i < fboId.length; i++) {
+//Bind Frame buffer
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fboId[i]);
+//Bind texture
+                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, fboTex[i]);
+//Define texture parameters
+                GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, width, height, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, null);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+                GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+//Bind render buffer and define buffer dimension
+                GLES20.glBindRenderbuffer(GLES20.GL_RENDERBUFFER, renderBufferId[i]);
+                GLES20.glRenderbufferStorage(GLES20.GL_RENDERBUFFER, GLES20.GL_DEPTH_COMPONENT16, width, height);
+//Attach texture FBO color attachment
+                GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, fboTex[i], 0);
+//Attach render buffer to depth attachment
+                GLES20.glFramebufferRenderbuffer(GLES20.GL_FRAMEBUFFER, GLES20.GL_DEPTH_ATTACHMENT, GLES20.GL_RENDERBUFFER, renderBufferId[i]);
+//we are done, reset
+                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+                GLES20.glBindRenderbuffer(GLES20.GL_RENDERBUFFER, 0);
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+            }
+        }
+    }
+
+    private void deleteFBO() {
+        if (fboId == null || fboTex == null || renderBufferId == null) {
+            return;
+        }
+        GLES20.glDeleteFramebuffers(1, fboId, 0);
+        GLES20.glDeleteTextures(1, fboTex, 0);
+        GLES20.glDeleteRenderbuffers(1, renderBufferId, 0);
+        fboId = null;
+        fboTex = null;
+        renderBufferId = null;
     }
 }

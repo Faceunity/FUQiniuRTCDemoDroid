@@ -2,7 +2,6 @@ package com.qiniu.droid.rtc.demo;
 
 import android.app.Application;
 
-import com.faceunity.FURenderer;
 import com.qiniu.droid.rtc.QNLogLevel;
 import com.qiniu.droid.rtc.QNRTCEnv;
 
@@ -16,7 +15,6 @@ public class RTCApplication extends Application {
          * init must be called before any other func
          */
         QNRTCEnv.init(getApplicationContext());
-
-        FURenderer.initFURenderer(this);
+        QNRTCEnv.setLogFileEnabled(true);
     }
 }

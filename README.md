@@ -1,6 +1,6 @@
-# FUQiniuRTCDemoDroid 快速接入文档
+# FUQNRTCDemoDroid 快速接入文档
 
-FUQiniuRTCDemoDroid 是集成了 Faceunity 面部跟踪和虚拟道具功能 和 七牛RTC Demo  的 Demo。
+FUQNRTCDemoDroid 是集成了 Faceunity 面部跟踪和虚拟道具功能 和 七牛RTC Demo  的 Demo。
 
 本文是 FaceUnity SDK 快速对 七牛RTC Demo 的导读说明，关于 `FaceUnity SDK` 的详细说明，请参看 **[FULiveDemoDroid](https://github.com/Faceunity/FULiveDemoDroid/tree/dev)**
 
@@ -10,7 +10,7 @@ FUQiniuRTCDemoDroid 是集成了 Faceunity 面部跟踪和虚拟道具功能 和
 
 ### 一、导入 SDK
 
-将 FaceUnity 文件夹全部拖入工程中。  
+将 FaceUnity 文件夹全部拖入工程中。
 
 - jniLibs 文件夹下 libnama.so 人脸跟踪及道具绘制核心静态库
 - libs 文件夹下 nama.jar java层native接口封装
@@ -18,15 +18,8 @@ FUQiniuRTCDemoDroid 是集成了 Faceunity 面部跟踪和虚拟道具功能 和
 - face_beautification.bundle 我司美颜相关的二进制文件
 - effects 文件夹下的 *.bundle 文件是我司制作的特效贴纸文件，自定义特效贴纸制作的文档和工具请联系我司获取。
 
-### 二、全局配置
 
-在 FURenderer类 的  `initFURenderer` 静态方法是对 Faceunity SDK 一些全局数据初始化的封装，可以在 Application 中调用，仅需初始化一次即可。
-
-```
-public static void initFURenderer(Context context)；
-```
-
-### 三、使用 SDK
+### 二、使用 SDK
 
 #### 初始化
 
@@ -37,16 +30,9 @@ public static void initFURenderer(Context context)；
 ```
             @Override
             public void onSurfaceCreated() {
-                Log.e(TAG, "onSurfaceCreated " + Thread.currentThread().getId());
-                final EGLContext eglContext = EGL14.eglGetCurrentContext();
-                mGLHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (mEglCore == null)
-                            mEglCore = new EglCore(eglContext, 0);
-                        mFURenderer.onSurfaceCreated();
-                    }
-                });
+                 if (fuRenderer != null) {
+                            fuRenderer.loadItems();
+                        }
             }
 ```
 
@@ -58,31 +44,40 @@ public static void initFURenderer(Context context)；
 
 ```
             @Override
-            public int onRenderingFrame(final int i, final int i1, final int i2, VideoFrame.TextureBuffer.Type type, long l) {
-                if (i <= 0 || i1 <= 0 || i2 <= 0 || mGLHandler == null || isCameraSwitching++ < 1)
-                    return i;
-                final CountDownLatch count = new CountDownLatch(1);
-                mGLHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (mEglSurfaceBase == null) {
-                            mEglSurfaceBase = new OffscreenSurface(mEglCore, i1, i2);
-                            mEglSurfaceBase.makeCurrent();
+            public int onRenderingFrame(int textureId, int width, int height, VideoFrame.TextureBuffer.Type type, long timestampNs) {
+                    Log.e("onRenderingFrame", "onRenderingFrame textureId " + textureId + " width= " + width + " height= " + height
+                            + "  type=" + type.name() + " timestampNs=" + timestampNs);
+                    int fuTuxId = textureId;
+
+                    int[] enabled = new int[10];
+                    for (int i = 0; i < 10; i++) {
+                        GLES20.glGetVertexAttribiv(i, GLES20.GL_VERTEX_ATTRIB_ARRAY_ENABLED, enabled, i);
+                        //Log.e("onRenderingFrame-before", "enabled" + i + "--" + enabled[i]);
+                    }
+                    if (fuRenderer != null) {
+                        if (!fuRenderer.isActive()) {
+                            fuRenderer.loadItems();
                         }
 
-                        mFUTextureId = mFURenderer.onDrawFrame(i, i1, i2);
-
-                        mEglSurfaceBase.swapBuffers();
-                        count.countDown();
+                        float[] matrix = new float[16];
+                        Matrix.setIdentityM(matrix, 0);
+                        if (fuRenderer.isFRONT()) {
+                            matrix[5] = -1.0f;
+                            fuTuxId = fuRenderer.onDrawFrame(fuTuxId, width, height, matrix);
+                        }
+                        fuTuxId = fuRenderer.onDrawFrame(mData, fuTuxId, width, height);
+                        fuTuxId = fuRenderer.onDrawFrame(fuTuxId, width, height, matrix);
                     }
-                });
-                try {
-                    count.await();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    for (int i = 0; i < 10; i++) {
+                        if (enabled[i] == 1) {
+                            GLES20.glEnableVertexAttribArray(i);
+                        } else {
+                            GLES20.glDisableVertexAttribArray(i);
+                        }
+                    }
+                    GLES20.glFinish();
+                    return fuTuxId;
                 }
-                return mFUTextureId;
-            }
 ```
 
 #### 销毁
@@ -94,22 +89,18 @@ public static void initFURenderer(Context context)；
 ```
             @Override
             public void onSurfaceDestroyed() {
-                Log.e(TAG, "onSurfaceDestroyed " + Thread.currentThread().getId());
-                mGLHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        mFURenderer.onSurfaceDestroyed();
-                    }
-                });
+                 if (fuRenderer != null)
+                    fuRenderer.destroyItems();
             }
 ```
 
-### 四、切换道具及调整美颜参数
+### 三、切换道具及调整美颜参数
 
 本例中 FURenderer类 实现了 OnFUControlListener接口，而OnFUControlListener接口是对切换道具及调整美颜参数等一系列操作的封装，demo中使用了BeautyControlView作为切换道具及调整美颜参数的控制view。使用以下代码便可实现view对各种参数的控制。
 
 ```
-mBeautyControlView.setOnFUControlListener(mFURenderer);
+mBeautyControlView.setOnFaceUnityControlListener(mFURenderer);
 ```
 
 **快速集成完毕，关于 FaceUnity SDK 的更多详细说明，请参看 [FULiveDemoDroid](https://github.com/Faceunity/FULiveDemoDroid/tree/dev)**
+ No newline at end of file

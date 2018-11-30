@@ -13,6 +13,8 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.faceunity.BeautyControlView;
+import com.faceunity.FURenderer;
 import com.qiniu.droid.rtc.demo.R;
 
 /**
@@ -36,6 +38,10 @@ public class ControlFragment extends Fragment {
     private boolean mIsVideoEnabled = true;
     private boolean mIsShowingLog = false;
     private boolean mIsScreenCaptureEnabled = false;
+    private boolean mIsAudioOnly = false;
+
+    private BeautyControlView beautyControlView;
+    private FURenderer fuRenderer;
 
     /**
      * Call control interface for container activity.
@@ -52,10 +58,15 @@ public class ControlFragment extends Fragment {
         boolean onToggleSpeaker();
 
         boolean onToggleBeauty();
+
     }
 
     public void setScreenCaptureEnabled(boolean isScreenCaptureEnabled) {
         mIsScreenCaptureEnabled = isScreenCaptureEnabled;
+    }
+
+    public void setAudioOnly(boolean isAudioOnly) {
+        mIsAudioOnly = isAudioOnly;
     }
 
     @Override
@@ -77,6 +88,9 @@ public class ControlFragment extends Fragment {
         mRemoteTextView.setMovementMethod(ScrollingMovementMethod.getInstance());
         mTimer = (Chronometer) mControlView.findViewById(R.id.timer);
 
+        beautyControlView = (BeautyControlView) mControlView.findViewById(R.id.beauty_view);
+        beautyControlView.setOnFaceUnityControlListener(fuRenderer);
+
         mDisconnectButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -84,7 +98,7 @@ public class ControlFragment extends Fragment {
             }
         });
 
-        if (!mIsScreenCaptureEnabled) {
+        if (!mIsScreenCaptureEnabled && !mIsAudioOnly) {
             mCameraSwitchButton.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View view) {
@@ -93,7 +107,7 @@ public class ControlFragment extends Fragment {
             });
         }
 
-        if (!mIsScreenCaptureEnabled) {
+        if (!mIsScreenCaptureEnabled && !mIsAudioOnly) {
             mToggleBeautyButton.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -111,7 +125,7 @@ public class ControlFragment extends Fragment {
             }
         });
 
-        if (mIsScreenCaptureEnabled) {
+        if (mIsScreenCaptureEnabled || mIsAudioOnly) {
             mToggleVideoButton.setImageResource(R.mipmap.video_close);
         } else {
             mToggleVideoButton.setOnClickListener(new View.OnClickListener() {
@@ -138,8 +152,11 @@ public class ControlFragment extends Fragment {
                 mIsShowingLog = !mIsShowingLog;
             }
         });
-
         return mControlView;
+    }
+
+    public void setFuRenderer(FURenderer fuRenderer) {
+        this.fuRenderer = fuRenderer;
     }
 
     public void startTimer() {
@@ -161,7 +178,7 @@ public class ControlFragment extends Fragment {
         if (mRemoteLogText == null) {
             mRemoteLogText = new StringBuffer();
         }
-        if (mLogView != null && mLogView.getVisibility() == View.VISIBLE) {
+        if (mLogView != null) {
             mRemoteTextView.setText(mRemoteLogText.append(logText + "\n"));
         }
     }
@@ -180,5 +197,12 @@ public class ControlFragment extends Fragment {
     public void onAttach(Activity activity) {
         super.onAttach(activity);
         mCallEvents = (OnCallEvents) activity;
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (beautyControlView != null)
+            beautyControlView.onResume();
     }
 }
