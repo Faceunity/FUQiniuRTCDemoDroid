@@ -25,12 +25,13 @@ public class ControlFragment extends Fragment {
     private ImageButton mDisconnectButton;
     private ImageButton mCameraSwitchButton;
     private ImageButton mToggleMuteButton;
-    private ImageButton mToggleBeautyButton;
+//    private ImageButton mToggleBeautyButton;
     private ImageButton mToggleSpeakerButton;
     private ImageButton mToggleVideoButton;
     private ImageButton mLogShownButton;
     private LinearLayout mLogView;
-    private TextView mLocalTextView;
+    private TextView mLocalTextViewForVideo;
+    private TextView mLocalTextViewForAudio;
     private TextView mRemoteTextView;
     private StringBuffer mRemoteLogText;
     private Chronometer mTimer;
@@ -39,7 +40,7 @@ public class ControlFragment extends Fragment {
     private boolean mIsShowingLog = false;
     private boolean mIsScreenCaptureEnabled = false;
     private boolean mIsAudioOnly = false;
-
+    //美颜
     private BeautyControlView beautyControlView;
     private FURenderer fuRenderer;
 
@@ -65,6 +66,10 @@ public class ControlFragment extends Fragment {
         mIsScreenCaptureEnabled = isScreenCaptureEnabled;
     }
 
+    public void setFuRenderer(FURenderer fuRenderer) {
+        this.fuRenderer = fuRenderer;
+    }
+
     public void setAudioOnly(boolean isAudioOnly) {
         mIsAudioOnly = isAudioOnly;
     }
@@ -76,14 +81,16 @@ public class ControlFragment extends Fragment {
 
         mDisconnectButton = (ImageButton) mControlView.findViewById(R.id.disconnect_button);
         mCameraSwitchButton = (ImageButton) mControlView.findViewById(R.id.camera_switch_button);
-        mToggleBeautyButton = (ImageButton) mControlView.findViewById(R.id.beauty_button);
+//        mToggleBeautyButton = (ImageButton) mControlView.findViewById(R.id.beauty_button);
         mToggleMuteButton = (ImageButton) mControlView.findViewById(R.id.microphone_button);
         mToggleSpeakerButton = (ImageButton) mControlView.findViewById(R.id.speaker_button);
         mToggleVideoButton = (ImageButton) mControlView.findViewById(R.id.camera_button);
         mLogShownButton = (ImageButton) mControlView.findViewById(R.id.log_shown_button);
         mLogView = (LinearLayout) mControlView.findViewById(R.id.log_text);
-        mLocalTextView = (TextView) mControlView.findViewById(R.id.local_log_text);
-        mLocalTextView.setMovementMethod(ScrollingMovementMethod.getInstance());
+        mLocalTextViewForVideo = (TextView) mControlView.findViewById(R.id.local_log_text_video);
+        mLocalTextViewForVideo.setMovementMethod(ScrollingMovementMethod.getInstance());
+        mLocalTextViewForAudio = (TextView) mControlView.findViewById(R.id.local_log_text_audio);
+        mLocalTextViewForAudio.setMovementMethod(ScrollingMovementMethod.getInstance());
         mRemoteTextView = (TextView) mControlView.findViewById(R.id.remote_log_text);
         mRemoteTextView.setMovementMethod(ScrollingMovementMethod.getInstance());
         mTimer = (Chronometer) mControlView.findViewById(R.id.timer);
@@ -107,15 +114,15 @@ public class ControlFragment extends Fragment {
             });
         }
 
-        if (!mIsScreenCaptureEnabled && !mIsAudioOnly) {
-            mToggleBeautyButton.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    boolean enabled = mCallEvents.onToggleBeauty();
-                    mToggleBeautyButton.setImageResource(enabled ? R.mipmap.face_beauty_open : R.mipmap.face_beauty_close);
-                }
-            });
-        }
+//        if (!mIsScreenCaptureEnabled && !mIsAudioOnly) {
+//            mToggleBeautyButton.setOnClickListener(new View.OnClickListener() {
+//                @Override
+//                public void onClick(View v) {
+//                    boolean enabled = mCallEvents.onToggleBeauty();
+//                    mToggleBeautyButton.setImageResource(enabled ? R.mipmap.face_beauty_open : R.mipmap.face_beauty_close);
+//                }
+//            });
+//        }
 
         mToggleMuteButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -155,10 +162,6 @@ public class ControlFragment extends Fragment {
         return mControlView;
     }
 
-    public void setFuRenderer(FURenderer fuRenderer) {
-        this.fuRenderer = fuRenderer;
-    }
-
     public void startTimer() {
         mTimer.setBase(SystemClock.elapsedRealtime());
         mTimer.start();
@@ -168,9 +171,15 @@ public class ControlFragment extends Fragment {
         mTimer.stop();
     }
 
-    public void updateLocalLogText(String logText) {
+    public void updateLocalVideoLogText(String logText) {
         if (mLogView.getVisibility() == View.VISIBLE) {
-            mLocalTextView.setText(logText);
+            mLocalTextViewForVideo.setText(logText);
+        }
+    }
+
+    public void updateLocalAudioLogText(String logText) {
+        if (mLogView.getVisibility() == View.VISIBLE) {
+            mLocalTextViewForAudio.setText(logText);
         }
     }
 
@@ -197,12 +206,5 @@ public class ControlFragment extends Fragment {
     public void onAttach(Activity activity) {
         super.onAttach(activity);
         mCallEvents = (OnCallEvents) activity;
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        if (beautyControlView != null)
-            beautyControlView.onResume();
     }
 }

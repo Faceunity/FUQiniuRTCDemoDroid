@@ -26,9 +26,18 @@
         android:visibility="gone">
 
         <TextView
-            android:id="@+id/local_log_text"
+            android:id="@+id/local_log_text_video"
             android:layout_width="match_parent"
-            android:layout_height="140dp"
+            android:layout_height="wrap_content"
+            android:fadeScrollbars="false"
+            android:padding="8dp"
+            android:scrollbars="vertical"
+            android:textColor="@color/white" />
+
+        <TextView
+            android:id="@+id/local_log_text_audio"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:fadeScrollbars="false"
             android:padding="8dp"
             android:scrollbars="vertical"
@@ -110,7 +119,8 @@
                 android:layout_height="54dp"
                 android:layout_gravity="center"
                 android:background="#0000"
-                android:src="@mipmap/face_beauty_close" />
+                android:src="@mipmap/face_beauty_close"
+                android:visibility="invisible" />
 
             <ImageView />
 

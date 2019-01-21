@@ -25,17 +25,6 @@ FUQNRTCDemoDroid 是集成了 Faceunity 面部跟踪和虚拟道具功能 和 �
 
 在 FURenderer类 的  `onSurfaceCreated` 方法是对 Faceunity SDK 每次使用前数据初始化的封装。
 
-在本demo中的使用：
-
-```
-            @Override
-            public void onSurfaceCreated() {
-                 if (fuRenderer != null) {
-                            fuRenderer.loadItems();
-                        }
-            }
-```
-
 #### 图像处理
 
 在 FURenderer类 的  `onDrawFrame` 方法是对 Faceunity SDK 图像处理方法的封装，该方法有许多重载方法适用于不同的数据类型需求。
@@ -78,20 +67,6 @@ FUQNRTCDemoDroid 是集成了 Faceunity 面部跟踪和虚拟道具功能 和 �
                     GLES20.glFinish();
                     return fuTuxId;
                 }
-```
-
-#### 销毁
-
-在 FURenderer类 的  `onSurfaceDestroyed` 方法是对 Faceunity SDK 数据销毁的封装。
-
-在本demo中的使用：
-
-```
-            @Override
-            public void onSurfaceDestroyed() {
-                 if (fuRenderer != null)
-                    fuRenderer.destroyItems();
-            }
 ```
 
 ### 三、切换道具及调整美颜参数
