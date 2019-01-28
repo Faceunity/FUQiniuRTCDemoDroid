@@ -91,7 +91,7 @@ public class FURenderer implements OnFaceUnityControlListener {
     private Effect mDefaultEffect;//默认道具（同步加载）
     private int mMaxFaces = 4; //同时识别的最大人脸
     private boolean mIsCreateEGLContext; //是否需要手动创建EGLContext
-    private int mInputTextureType = 0; //输入的图像texture类型，Camera提供的默认为EXTERNAL OES
+    private int mInputTextureType = 0; //1:输入的图像texture类型，Camera提供的默认为EXTERNAL OES
     private int mInputImageFormat = 0;
     private boolean mNeedReadBackImage = false; //将传入的byte[]图像复写为具有道具效果的
 
@@ -1131,6 +1131,46 @@ public class FURenderer implements OnFaceUnityControlListener {
         return fboTex[0];
     }
 
+    public int onDrawFrameFBO(byte[] mData, int texId, int texWidth, int texHeight, float[] transformMatrix) {
+        if (!isActive) {
+            return texId;
+        }
+
+        createFBO(texWidth, texHeight);
+
+        int fuTex = 0;
+        boolean isFront = mCurrentCameraType == Camera.CameraInfo.CAMERA_FACING_FRONT;
+        if (isFront) {
+            int[] fbo = new int[1];
+            GLES20.glGetIntegerv(GLES20.GL_FRAMEBUFFER_BINDING, fbo, 0);
+            int[] originalViewPort = new int[4];
+            GLES20.glGetIntegerv(GLES20.GL_VIEWPORT, originalViewPort, 0);
+
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fboId[0]);
+            GLES20.glViewport(0, 0, texWidth, texHeight);
+            mFullScreenFUDisplay.drawFrame(texId, transformMatrix);
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo[0]);
+            GLES20.glViewport(originalViewPort[0], originalViewPort[1], originalViewPort[2], originalViewPort[3]);
+
+            fuTex = onDrawFrame(mData, fboTex[0], texWidth, texHeight);
+        } else {
+            fuTex = onDrawFrame(mData, texId, texWidth, texHeight);
+        }
+
+        int[] fbo2 = new int[1];
+        GLES20.glGetIntegerv(GLES20.GL_FRAMEBUFFER_BINDING, fbo2, 0);
+        int[] originalViewPort2 = new int[4];
+        GLES20.glGetIntegerv(GLES20.GL_VIEWPORT, originalViewPort2, 0);
+
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fboId[1]);
+        GLES20.glViewport(0, 0, texWidth, texHeight);
+        mFullScreenFUDisplay.drawFrame(fuTex, transformMatrix);
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo2[0]);
+        GLES20.glViewport(originalViewPort2[0], originalViewPort2[1], originalViewPort2[2], originalViewPort2[3]);
+
+        return fboTex[1];
+    }
+
     public boolean onPreviewFrame(byte[] data, int width, int height, int rotation, int fmt, long timestampNs) {
 //        mCameraNV21Byte = data;
 //
@@ -1169,16 +1209,16 @@ public class FURenderer implements OnFaceUnityControlListener {
         fboHeight = height;
 
         if (fboTex == null) {
-            fboId = new int[1];
-            fboTex = new int[1];
-            renderBufferId = new int[1];
+            fboId = new int[2];
+            fboTex = new int[2];
+            renderBufferId = new int[2];
 
 //generate fbo id
-            GLES20.glGenFramebuffers(1, fboId, 0);
+            GLES20.glGenFramebuffers(2, fboId, 0);
 //generate texture
-            GLES20.glGenTextures(1, fboTex, 0);
+            GLES20.glGenTextures(2, fboTex, 0);
 //generate render buffer
-            GLES20.glGenRenderbuffers(1, renderBufferId, 0);
+            GLES20.glGenRenderbuffers(2, renderBufferId, 0);
 
             for (int i = 0; i < fboId.length; i++) {
 //Bind Frame buffer
@@ -1210,9 +1250,9 @@ public class FURenderer implements OnFaceUnityControlListener {
         if (fboId == null || fboTex == null || renderBufferId == null) {
             return;
         }
-        GLES20.glDeleteFramebuffers(1, fboId, 0);
-        GLES20.glDeleteTextures(1, fboTex, 0);
-        GLES20.glDeleteRenderbuffers(1, renderBufferId, 0);
+        GLES20.glDeleteFramebuffers(2, fboId, 0);
+        GLES20.glDeleteTextures(2, fboTex, 0);
+        GLES20.glDeleteRenderbuffers(2, renderBufferId, 0);
         fboId = null;
         fboTex = null;
         renderBufferId = null;

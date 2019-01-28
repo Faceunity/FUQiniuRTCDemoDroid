@@ -262,7 +262,7 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
     private void initFURenderer() {
         int mInputImageOrientation = getFrontCameraOrientation();
         fuRenderer = new FURenderer.Builder(this)
-                .inputTextureType(faceunity.FU_ADM_FLAG_ENABLE_READBACK)
+                .inputTextureType(0)
                 .inputImageOrientation(mInputImageOrientation)
                 .build();
     }

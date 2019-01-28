@@ -54,10 +54,9 @@ public class UserTrackViewFullScreen extends UserTrackView implements QNCaptureV
             Matrix.setIdentityM(matrix, 0);
             if (fuRenderer.isFRONT()) {
                 matrix[5] = -1.0f;
-                fuTuxId = fuRenderer.onDrawFrame(fuTuxId, width, height, matrix);
             }
-            fuTuxId = fuRenderer.onDrawFrame(mData, fuTuxId, width, height);
-            fuTuxId = fuRenderer.onDrawFrame(fuTuxId, width, height, matrix);
+            fuTuxId = fuRenderer.onDrawFrameFBO(mData, fuTuxId, width, height, matrix);
+            GLES20.glFinish();
         }
         for (int i = 0; i < 10; i++) {
             if (enabled[i] == 1) {
@@ -66,7 +65,6 @@ public class UserTrackViewFullScreen extends UserTrackView implements QNCaptureV
                 GLES20.glDisableVertexAttribArray(i);
             }
         }
-        GLES20.glFinish();
         return fuTuxId;
     }
 
