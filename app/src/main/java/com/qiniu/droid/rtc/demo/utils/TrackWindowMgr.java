@@ -12,6 +12,7 @@ import com.qiniu.droid.rtc.demo.ui.UserTrackViewFullScreen;
 import org.webrtc.Logging;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public class TrackWindowMgr {
@@ -306,5 +307,12 @@ public class TrackWindowMgr {
         lp.gravity = gravity;
         lp.setMarginStart(marginStart);
         targetView.setLayoutParams(lp);
+    }
+
+    public void reset() {
+        Collection<String> users = new ArrayList<>(mUserWindowMap.keySet());
+        for (String userId : users) {
+            removeTrackWindow(userId);
+        }
     }
 }

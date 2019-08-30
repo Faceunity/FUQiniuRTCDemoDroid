@@ -13,8 +13,8 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.faceunity.BeautyControlView;
-import com.faceunity.FURenderer;
+import com.faceunity.beautycontrolview.BeautyControlView;
+import com.faceunity.beautycontrolview.FURenderer;
 import com.qiniu.droid.rtc.demo.R;
 
 /**
@@ -25,7 +25,7 @@ public class ControlFragment extends Fragment {
     private ImageButton mDisconnectButton;
     private ImageButton mCameraSwitchButton;
     private ImageButton mToggleMuteButton;
-//    private ImageButton mToggleBeautyButton;
+    //    private ImageButton mToggleBeautyButton;
     private ImageButton mToggleSpeakerButton;
     private ImageButton mToggleVideoButton;
     private ImageButton mLogShownButton;
@@ -96,7 +96,11 @@ public class ControlFragment extends Fragment {
         mTimer = (Chronometer) mControlView.findViewById(R.id.timer);
 
         beautyControlView = (BeautyControlView) mControlView.findViewById(R.id.beauty_view);
-        beautyControlView.setOnFaceUnityControlListener(fuRenderer);
+        if (fuRenderer == null) {
+            beautyControlView.setVisibility(View.GONE);
+        } else {
+            beautyControlView.setOnFaceUnityControlListener(fuRenderer);
+        }
 
         mDisconnectButton.setOnClickListener(new View.OnClickListener() {
             @Override

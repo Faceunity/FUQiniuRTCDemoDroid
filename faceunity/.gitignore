@@ -1,11 +1,2 @@
-*.iml
-.gradle
-/local.properties
-/.idea
-/.idea/workspace.xml
-/.idea/libraries
-.DS_Store
 /build
-/captures
-.externalNativeBuild
-/src/main/java/com/faceunity/authpack.java
+/src/main/java/com/faceunity/beautycontrolview/authpack.java

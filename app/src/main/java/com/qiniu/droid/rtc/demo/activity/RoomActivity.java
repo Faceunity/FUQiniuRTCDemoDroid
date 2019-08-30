@@ -19,13 +19,10 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Toast;
 
-import com.faceunity.EffectEnum;
-import com.faceunity.FURenderer;
-import com.faceunity.FilterEnum;
-import com.faceunity.entity.Effect;
-import com.faceunity.wrapper.faceunity;
+import com.faceunity.beautycontrolview.FURenderer;
 import com.qiniu.droid.rtc.QNBeautySetting;
 import com.qiniu.droid.rtc.QNCameraSwitchResultCallback;
+import com.qiniu.droid.rtc.QNCustomMessage;
 import com.qiniu.droid.rtc.QNErrorCode;
 import com.qiniu.droid.rtc.QNRTCEngine;
 import com.qiniu.droid.rtc.QNRTCEngineEventListener;
@@ -37,10 +34,12 @@ import com.qiniu.droid.rtc.QNTrackInfo;
 import com.qiniu.droid.rtc.QNTrackKind;
 import com.qiniu.droid.rtc.QNVideoFormat;
 import com.qiniu.droid.rtc.demo.R;
+import com.qiniu.droid.rtc.demo.RTCApplication;
 import com.qiniu.droid.rtc.demo.fragment.ControlFragment;
 import com.qiniu.droid.rtc.demo.ui.UserTrackView;
 import com.qiniu.droid.rtc.demo.ui.UserTrackViewFullScreen;
 import com.qiniu.droid.rtc.demo.utils.Config;
+import com.qiniu.droid.rtc.demo.utils.PreferenceUtil;
 import com.qiniu.droid.rtc.demo.utils.QNAppServer;
 import com.qiniu.droid.rtc.demo.utils.ToastUtils;
 import com.qiniu.droid.rtc.demo.utils.TrackWindowMgr;
@@ -102,6 +101,7 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
     private TrackWindowMgr mTrackWindowMgr;
     //美颜
     private FURenderer fuRenderer;
+    private String isOpen;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -255,16 +255,20 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
                 mLocalTrackList.add(mLocalScreenTrack);
                 mLocalTrackList.add(mLocalVideoTrack);
                 break;
+            default:
         }
     }
 
     //初始化FURender
     private void initFURenderer() {
+        isOpen = PreferenceUtil.getString(RTCApplication.getInstance(), PreferenceUtil.KEY_FACEUNITY_ISON);
+
         int mInputImageOrientation = getFrontCameraOrientation();
-        fuRenderer = new FURenderer.Builder(this)
-                .inputTextureType(0)
-                .inputImageOrientation(mInputImageOrientation)
-                .build();
+        if (isOpen.equals("true"))
+            fuRenderer = new FURenderer.Builder(this)
+                    .inputTextureType(0)
+                    .inputImageOrientation(mInputImageOrientation)
+                    .build();
     }
 
     public int getFrontCameraOrientation() {
@@ -290,15 +294,19 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
     @Override
     protected void onResume() {
         super.onResume();
+        mEngine.startCapture();
+        Log.d(TAG, "onResume: startCapture");
         if (!mIsJoinedRoom) {
             mEngine.joinRoom(mRoomToken);
+            Log.d(TAG, "onResume: joinRoom");
         }
     }
 
     @Override
-    public void onBackPressed() {
-        super.onBackPressed();
-        finish();
+    protected void onPause() {
+        super.onPause();
+        Log.d(TAG, "onPause: stopCapture");
+        mEngine.stopCapture();
     }
 
     @Override
@@ -307,6 +315,7 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
         if (mEngine != null) {
             mEngine.destroy();
             mEngine = null;
+            Log.d(TAG, "onDestroy: engine destroy");
         }
         if (mTrackWindowFullScreen != null) {
             mTrackWindowFullScreen.dispose();
@@ -336,6 +345,7 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
                             @Override
                             public void onClick(DialogInterface dialog, int id) {
                                 dialog.cancel();
+                                finish();
                             }
                         })
                 .create()
@@ -402,6 +412,7 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
             case CONNECTING:
                 logAndToast(getString(R.string.connecting_to, mRoomId));
                 break;
+            default:
         }
     }
 
@@ -485,20 +496,30 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
 
     @Override
     public void onError(int errorCode, String description) {
-        if (errorCode == QNErrorCode.ERROR_TOKEN_ERROR
-                || errorCode == QNErrorCode.ERROR_TOKEN_EXPIRED
-                || errorCode == QNErrorCode.ERROR_AUTH_FAIL
-                || errorCode == QNErrorCode.ERROR_RECONNECT_TOKEN_ERROR
-                || errorCode == QNErrorCode.ERROR_SIGNAL_IO_EXCEPTION
-                || errorCode == QNErrorCode.ERROR_TOKEN_INVALID) {
+        if (errorCode == QNErrorCode.ERROR_TOKEN_INVALID
+                || errorCode == QNErrorCode.ERROR_TOKEN_ERROR
+                || errorCode == QNErrorCode.ERROR_TOKEN_EXPIRED) {
             reportError("roomToken 错误，请重新加入房间");
+        } else if (errorCode == QNErrorCode.ERROR_AUTH_FAIL
+                || errorCode == QNErrorCode.ERROR_RECONNECT_TOKEN_ERROR) {
+            // reset TrackWindowMgr
+            mTrackWindowMgr.reset();
+            // display local videoTrack
+            List<QNTrackInfo> localTrackListExcludeScreenTrack = new ArrayList<>(mLocalTrackList);
+            localTrackListExcludeScreenTrack.remove(mLocalScreenTrack);
+            mTrackWindowMgr.addTrackInfo(mUserId, localTrackListExcludeScreenTrack);
+            // rejoin Room
+            mEngine.joinRoom(mRoomToken);
         } else if (errorCode == QNErrorCode.ERROR_PUBLISH_FAIL) {
             reportError("发布失败，请重新加入房间发布");
-        } else if (errorCode == QNErrorCode.ERROR_ACCESSTOKEN_INVALID) {
-            reportError("服务端发生了一些问题，加入房间失败，请重试");
         } else {
             logAndToast("errorCode:" + errorCode + " description:" + description);
         }
+    }
+
+    @Override
+    public void onMessageReceived(QNCustomMessage qnCustomMessage) {
+
     }
 
     // Demo control
@@ -506,6 +527,7 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
     public void onCallHangUp() {
         if (mEngine != null) {
             mEngine.leaveRoom();
+            Log.d(TAG, "onCallHangUp: leaveRoom");
         }
         finish();
     }
@@ -516,11 +538,14 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
             mEngine.switchCamera(new QNCameraSwitchResultCallback() {
                 @Override
                 public void onCameraSwitchDone(boolean isFrontCamera) {
+                    Log.d(TAG, "onCameraSwitchDone: isFront:" + isFrontCamera);
                     int cameraId = isFrontCamera ? Camera.CameraInfo.CAMERA_FACING_FRONT :
                             Camera.CameraInfo.CAMERA_FACING_BACK;
                     int orientation = getFrontCameraOrientation();
 //                    int orientation = isFrontCamera ? getFrontCameraOrientation() : 90;
-                    fuRenderer.onCameraChange(cameraId, orientation);
+                    if (fuRenderer != null) {
+                        fuRenderer.onCameraChange(cameraId, orientation);
+                    }
                 }
 
                 @Override
