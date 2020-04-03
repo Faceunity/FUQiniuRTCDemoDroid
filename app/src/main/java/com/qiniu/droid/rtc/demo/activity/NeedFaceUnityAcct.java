@@ -12,10 +12,9 @@ import com.qiniu.droid.rtc.demo.R;
 import com.qiniu.droid.rtc.demo.RTCApplication;
 import com.qiniu.droid.rtc.demo.utils.PreferenceUtil;
 
-
 public class NeedFaceUnityAcct extends AppCompatActivity {
-
-    private boolean isOn = true;//是否使用FaceUnity
+    // 是否使用FaceUnity
+    private boolean mIsFuOn = true;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -24,32 +23,27 @@ public class NeedFaceUnityAcct extends AppCompatActivity {
 
         final Button button = (Button) findViewById(R.id.btn_set);
         String isOpen = PreferenceUtil.getString(RTCApplication.getInstance(), PreferenceUtil.KEY_FACEUNITY_ISON);
-        if (TextUtils.isEmpty(isOpen) || isOpen.equals("false")) {
-            isOn = false;
-        } else {
-            isOn = true;
-        }
-        button.setText(isOn ? "On" : "Off");
+        mIsFuOn = !TextUtils.isEmpty(isOpen) && !PreferenceUtil.FU_BEAUTY_OFF.equals(isOpen);
+        button.setText(mIsFuOn ? "On" : "Off");
 
         button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                isOn = !isOn;
-                button.setText(isOn ? "On" : "Off");
+                mIsFuOn = !mIsFuOn;
+                button.setText(mIsFuOn ? "On" : "Off");
             }
         });
 
-        Button btn_to_main = (Button) findViewById(R.id.btn_to_main);
-        btn_to_main.setOnClickListener(new View.OnClickListener() {
+        Button btnToMain = (Button) findViewById(R.id.btn_to_main);
+        btnToMain.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Intent intent = new Intent(NeedFaceUnityAcct.this, WelcomeActivity.class);
                 PreferenceUtil.persistString(RTCApplication.getInstance(), PreferenceUtil.KEY_FACEUNITY_ISON,
-                        isOn + "");
+                        mIsFuOn ? PreferenceUtil.FU_BEAUTY_ON : PreferenceUtil.FU_BEAUTY_OFF);
                 startActivity(intent);
                 finish();
             }
         });
-
     }
 }

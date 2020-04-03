@@ -69,10 +69,10 @@
         android:gravity="bottom"
         android:stretchColumns="0,2,4,6">
 
-        <com.faceunity.beautycontrolview.BeautyControlView
+        <com.faceunity.nama.ui.BeautyControlView
             android:id="@+id/beauty_view"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"></com.faceunity.beautycontrolview.BeautyControlView>
+            android:layout_height="wrap_content" />
 
         <TableRow android:layout_marginBottom="24dp">
 

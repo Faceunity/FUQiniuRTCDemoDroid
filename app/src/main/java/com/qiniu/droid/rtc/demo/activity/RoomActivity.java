@@ -19,7 +19,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Toast;
 
-import com.faceunity.beautycontrolview.FURenderer;
+import com.faceunity.nama.FURenderer;
 import com.qiniu.droid.rtc.QNBeautySetting;
 import com.qiniu.droid.rtc.QNCameraSwitchResultCallback;
 import com.qiniu.droid.rtc.QNCustomMessage;
@@ -72,7 +72,7 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
     private Toast mLogToast;
     private List<String> mHWBlackList = new ArrayList<>();
 
-    private UserTrackView mTrackWindowFullScreen;
+    private UserTrackViewFullScreen mTrackWindowFullScreen;
     private List<UserTrackView> mTrackWindowsList;
     private AlertDialog mKickOutDialog;
 
@@ -99,9 +99,8 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
     private int mCaptureMode = Config.CAMERA_CAPTURE;
 
     private TrackWindowMgr mTrackWindowMgr;
-    //美颜
+    // faceunity 美颜贴纸
     private FURenderer fuRenderer;
-    private String isOpen;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -127,7 +126,7 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
         mIsAdmin = mUserId.equals(QNAppServer.ADMIN_USER);
 
         initFURenderer();
-        mTrackWindowFullScreen = (UserTrackView) findViewById(R.id.track_window_full_screen);
+        mTrackWindowFullScreen = (UserTrackViewFullScreen) findViewById(R.id.track_window_full_screen);
         ((UserTrackViewFullScreen) mTrackWindowFullScreen).setFuRenderer(fuRenderer);
         mTrackWindowsList = new LinkedList<UserTrackView>(Arrays.asList(
                 (UserTrackView) findViewById(R.id.track_window_a),
@@ -259,36 +258,16 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
         }
     }
 
-    //初始化FURender
     private void initFURenderer() {
-        isOpen = PreferenceUtil.getString(RTCApplication.getInstance(), PreferenceUtil.KEY_FACEUNITY_ISON);
-
-        int mInputImageOrientation = getFrontCameraOrientation();
-        if (isOpen.equals("true"))
+        String isOpen = PreferenceUtil.getString(RTCApplication.getInstance(), PreferenceUtil.KEY_FACEUNITY_ISON);
+        if (PreferenceUtil.FU_BEAUTY_ON.equals(isOpen)) {
+            FURenderer.initFURenderer(this);
             fuRenderer = new FURenderer.Builder(this)
-                    .inputTextureType(0)
-                    .inputImageOrientation(mInputImageOrientation)
+                    .setInputTextureType(FURenderer.INPUT_2D_TEXTURE)
+                    .setCameraType(Camera.CameraInfo.CAMERA_FACING_FRONT)
+                    .setInputImageOrientation(FURenderer.getCameraOrientation(Camera.CameraInfo.CAMERA_FACING_FRONT))
                     .build();
-    }
-
-    public int getFrontCameraOrientation() {
-        Camera.CameraInfo info = new Camera.CameraInfo();
-        int cameraId = 1;
-        int numCameras = Camera.getNumberOfCameras();
-        for (int i = 0; i < numCameras; i++) {
-            Camera.getCameraInfo(i, info);
-            if (info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
-                cameraId = i;
-                break;
-            }
         }
-        return getCameraOrientation(cameraId);
-    }
-
-    public int getCameraOrientation(int cameraId) {
-        Camera.CameraInfo info = new Camera.CameraInfo();
-        Camera.getCameraInfo(cameraId, info);
-        return info.orientation;
     }
 
     @Override
@@ -535,21 +514,21 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
     @Override
     public void onCameraSwitch() {
         if (mEngine != null) {
+            mTrackWindowFullScreen.setToSwitchCamera(true);
             mEngine.switchCamera(new QNCameraSwitchResultCallback() {
                 @Override
                 public void onCameraSwitchDone(boolean isFrontCamera) {
                     Log.d(TAG, "onCameraSwitchDone: isFront:" + isFrontCamera);
-                    int cameraId = isFrontCamera ? Camera.CameraInfo.CAMERA_FACING_FRONT :
-                            Camera.CameraInfo.CAMERA_FACING_BACK;
-                    int orientation = getFrontCameraOrientation();
-//                    int orientation = isFrontCamera ? getFrontCameraOrientation() : 90;
+                    mTrackWindowFullScreen.setToSwitchCamera(false);
+                    int cameraId = isFrontCamera ? Camera.CameraInfo.CAMERA_FACING_FRONT : Camera.CameraInfo.CAMERA_FACING_BACK;
                     if (fuRenderer != null) {
-                        fuRenderer.onCameraChange(cameraId, orientation);
+                        fuRenderer.onCameraChanged(cameraId, FURenderer.getCameraOrientation(cameraId));
                     }
                 }
 
                 @Override
                 public void onCameraSwitchError(String errorMessage) {
+                    mTrackWindowFullScreen.setToSwitchCamera(false);
                 }
             });
         }
