@@ -5,14 +5,15 @@ import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
 
 public class PreferenceUtil {
-    
     public static final String KEY_FACEUNITY_ISON = "faceunity_ison";
+    public static final String FU_BEAUTY_ON = "fu_on";
+    public static final String FU_BEAUTY_OFF = "fu_off";
 
     public static boolean persistString(Context context, String key, String value) {
         if(context == null) return false;
         SharedPreferences defaultPreference = PreferenceManager.getDefaultSharedPreferences(context);
         try {
-            defaultPreference.edit().putString(key, value).commit();
+            defaultPreference.edit().putString(key, value).apply();
         } catch (Exception e) {
             return false;
         }

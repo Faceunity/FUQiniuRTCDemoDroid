@@ -13,8 +13,8 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.faceunity.beautycontrolview.BeautyControlView;
-import com.faceunity.beautycontrolview.FURenderer;
+import com.faceunity.nama.FURenderer;
+import com.faceunity.nama.ui.BeautyControlView;
 import com.qiniu.droid.rtc.demo.R;
 
 /**
@@ -40,8 +40,6 @@ public class ControlFragment extends Fragment {
     private boolean mIsShowingLog = false;
     private boolean mIsScreenCaptureEnabled = false;
     private boolean mIsAudioOnly = false;
-    //美颜
-    private BeautyControlView beautyControlView;
     private FURenderer fuRenderer;
 
     /**
@@ -95,7 +93,7 @@ public class ControlFragment extends Fragment {
         mRemoteTextView.setMovementMethod(ScrollingMovementMethod.getInstance());
         mTimer = (Chronometer) mControlView.findViewById(R.id.timer);
 
-        beautyControlView = (BeautyControlView) mControlView.findViewById(R.id.beauty_view);
+        BeautyControlView beautyControlView = (BeautyControlView) mControlView.findViewById(R.id.beauty_view);
         if (fuRenderer == null) {
             beautyControlView.setVisibility(View.GONE);
         } else {
@@ -192,7 +190,7 @@ public class ControlFragment extends Fragment {
             mRemoteLogText = new StringBuffer();
         }
         if (mLogView != null) {
-            mRemoteTextView.setText(mRemoteLogText.append(logText + "\n"));
+            mRemoteTextView.setText(mRemoteLogText.append(logText).append("\n"));
         }
     }
 
@@ -205,7 +203,6 @@ public class ControlFragment extends Fragment {
         }
     }
 
-    @SuppressWarnings("deprecation")
     @Override
     public void onAttach(Activity activity) {
         super.onAttach(activity);
