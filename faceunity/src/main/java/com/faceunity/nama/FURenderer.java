@@ -62,12 +62,12 @@ public class FURenderer implements OnFaceUnityControlListener {
     private float mMouthShapeLevel = 0.4f;//嘴形
 
     /* 句柄数组下标，分别代表美颜和贴纸 */
-    private static final int ITEM_ARRAYS_FACE_BEAUTY = 0;
-    private static final int ITEM_ARRAYS_EFFECT = 1;
+    private static final int ITEMS_ARRAY_FACE_BEAUTY = 0;
+    private static final int ITEMS_ARRAY_EFFECT = 1;
     /* 句柄数组长度 2 */
-    private static final int ITEM_ARRAYS_COUNT = 2;
+    private static final int ITEMS_ARRAY_COUNT = 2;
     /* 存放美颜和贴纸句柄的数组 */
-    private final int[] mItemsArray = new int[ITEM_ARRAYS_COUNT];
+    private final int[] mItemsArray = new int[ITEMS_ARRAY_COUNT];
     private final Context mContext;
     /* IO 线程 Handler */
     private Handler mFuItemHandler;
@@ -116,11 +116,32 @@ public class FURenderer implements OnFaceUnityControlListener {
         // 获取 Nama SDK 版本信息
         Log.e(TAG, "fu sdk version " + faceunity.fuGetVersion());
         // v3 不再使用，第一个参数传空字节数组即可
-        int isSetup = faceunity.fuSetup(new byte[]{}, authpack.A());
+        int isSetup = faceunity.fuSetup(new byte[0], authpack.A());
         Log.d(TAG, "fuSetup. isSetup: " + (isSetup == 0 ? "no" : "yes"));
-        // ai_face_processor 是人脸识别数据包，取代旧版本的 v3
+        // ai_face_processor 是人脸识别数据包
         loadAiModel(context, "AI_model/ai_face_processor.bundle", faceunity.FUAITYPE_FACEPROCESSOR);
-        sIsInited = true;
+        sIsInited = isLibInit();
+        Log.d(TAG, "initFURenderer finish. isLibraryInit: " + (sIsInited ? "yes" : "no"));
+    }
+
+    /**
+     * 释放鉴权数据占用的内存。如需再次使用，需要调用 fuSetup
+     */
+    public static void destroyLibData() {
+        if (sIsInited) {
+            faceunity.fuDestroyLibData();
+            sIsInited = isLibInit();
+            Log.d(TAG, "destroyLibData. isLibraryInit: " + (sIsInited ? "yes" : "no"));
+        }
+    }
+
+    /**
+     * SDK 是否初始化
+     *
+     * @return
+     */
+    public static boolean isLibInit() {
+        return faceunity.fuIsLibraryInit() == 1;
     }
 
     /**
@@ -228,12 +249,23 @@ public class FURenderer implements OnFaceUnityControlListener {
     }
 
     /**
-     * 获取 Nama sdk 版本号
+     * 获取 Nama SDK 完整版本号，例如 6.7.0_tf_phy-f1e36a93-b9e3359-b5f220d
      *
-     * @return version
+     * @return full version
      */
-    public static String getVersion() {
+    public static String getFullVersion() {
         return faceunity.fuGetVersion();
+    }
+
+    /**
+     * 获取 Nama SDK 主版本号，例如 6.7.0
+     *
+     * @return major version
+     */
+    public static String getMajorVersion() {
+        String version = faceunity.fuGetVersion();
+        String majorVersion = version.substring(0, version.indexOf('_'));
+        return majorVersion;
     }
 
     private FURenderer(Context context) {
@@ -263,15 +295,15 @@ public class FURenderer implements OnFaceUnityControlListener {
         mRotationMode = createRotationMode();
         // 设置人脸识别的方向，能够提高首次识别速度
         faceunity.fuSetDefaultRotationMode(mRotationMode);
-        // 设置同时识别的人脸数量，目前最多支持 8 人
+        // 设置同时识别的人脸数量
         faceunity.fuSetMaxFaces(mMaxFaces);
         // 异步加载美颜道具
         if (mIsNeedFaceBeauty) {
-            mFuItemHandler.sendEmptyMessage(ITEM_ARRAYS_FACE_BEAUTY);
+            mFuItemHandler.sendEmptyMessage(ITEMS_ARRAY_FACE_BEAUTY);
         }
         // 异步加载贴纸道具
         if (mEffect != null) {
-            mFuItemHandler.sendMessage(Message.obtain(mFuItemHandler, ITEM_ARRAYS_EFFECT, mEffect));
+            mFuItemHandler.sendMessage(Message.obtain(mFuItemHandler, ITEMS_ARRAY_EFFECT, mEffect));
         }
     }
 
@@ -529,8 +561,8 @@ public class FURenderer implements OnFaceUnityControlListener {
         }
 
         // 更新美颜参数
-        if (mIsNeedUpdateFaceBeauty && mItemsArray[ITEM_ARRAYS_FACE_BEAUTY] > 0) {
-            int itemBeauty = mItemsArray[ITEM_ARRAYS_FACE_BEAUTY];
+        if (mIsNeedUpdateFaceBeauty && mItemsArray[ITEMS_ARRAY_FACE_BEAUTY] > 0) {
+            int itemBeauty = mItemsArray[ITEMS_ARRAY_FACE_BEAUTY];
             //filter_level 滤镜强度 范围0~1 SDK默认为 1
             faceunity.fuItemSetParam(itemBeauty, "filter_level", mFilterLevel);
             //filter_name 滤镜名称 SDK默认为 origin
@@ -605,17 +637,9 @@ public class FURenderer implements OnFaceUnityControlListener {
         if (mDeviceOrientation == deviceOrientation) {
             return;
         }
-        mDeviceOrientation = deviceOrientation;
         Log.d(TAG, "onDeviceOrientationChanged() called with: deviceOrientation = [" + deviceOrientation + "]");
-        queueEvent(new Runnable() {
-            @Override
-            public void run() {
-                mRotationMode = createRotationMode();
-                faceunity.fuSetDefaultRotationMode(mRotationMode);
-                setEffectItemParams(mItemsArray[ITEM_ARRAYS_EFFECT]);
-                faceunity.fuOnCameraChange();
-            }
-        });
+        mDeviceOrientation = deviceOrientation;
+        callWhenDeviceChanged();
     }
 
     /**
@@ -632,13 +656,16 @@ public class FURenderer implements OnFaceUnityControlListener {
                 + "], inputImageOrientation = [" + inputImageOrientation + "]");
         mCameraType = cameraType;
         mInputImageOrientation = inputImageOrientation;
+        callWhenDeviceChanged();
+    }
+
+    private void callWhenDeviceChanged() {
         queueEvent(new Runnable() {
             @Override
             public void run() {
-                mFrameId = 0;
                 mRotationMode = createRotationMode();
                 faceunity.fuSetDefaultRotationMode(mRotationMode);
-                setEffectItemParams(mItemsArray[ITEM_ARRAYS_EFFECT]);
+                setEffectItemParams(mItemsArray[ITEMS_ARRAY_EFFECT]);
                 faceunity.fuOnCameraChange();
             }
         });
@@ -708,6 +735,7 @@ public class FURenderer implements OnFaceUnityControlListener {
         } else {
             isAndroid = 0.0;
         }
+        // 历史遗留参数，和具体道具有关
         faceunity.fuItemSetParam(itemHandle, "isAndroid", isAndroid);
         // rotationAngle 参数是用于旋转普通道具
         faceunity.fuItemSetParam(itemHandle, "rotationAngle", mRotationMode * 90);
@@ -722,7 +750,7 @@ public class FURenderer implements OnFaceUnityControlListener {
             return;
         }
         mEffect = effect;
-        mFuItemHandler.sendMessage(Message.obtain(mFuItemHandler, ITEM_ARRAYS_EFFECT, effect));
+        mFuItemHandler.sendMessage(Message.obtain(mFuItemHandler, ITEMS_ARRAY_EFFECT, effect));
     }
 
     @Override
@@ -902,7 +930,7 @@ public class FURenderer implements OnFaceUnityControlListener {
             super.handleMessage(msg);
             switch (msg.what) {
                 // 加载贴纸道具
-                case ITEM_ARRAYS_EFFECT: {
+                case ITEMS_ARRAY_EFFECT: {
                     final Effect effect = (Effect) msg.obj;
                     if (effect == null) {
                         return;
@@ -911,20 +939,20 @@ public class FURenderer implements OnFaceUnityControlListener {
                     queueEvent(new Runnable() {
                         @Override
                         public void run() {
-                            if (mItemsArray[ITEM_ARRAYS_EFFECT] > 0) {
-                                faceunity.fuDestroyItem(mItemsArray[ITEM_ARRAYS_EFFECT]);
-                                mItemsArray[ITEM_ARRAYS_EFFECT] = 0;
+                            if (mItemsArray[ITEMS_ARRAY_EFFECT] > 0) {
+                                faceunity.fuDestroyItem(mItemsArray[ITEMS_ARRAY_EFFECT]);
+                                mItemsArray[ITEMS_ARRAY_EFFECT] = 0;
                             }
                             if (itemEffect > 0) {
                                 setEffectItemParams(itemEffect);
-                                mItemsArray[ITEM_ARRAYS_EFFECT] = itemEffect;
+                                mItemsArray[ITEMS_ARRAY_EFFECT] = itemEffect;
                             }
                         }
                     });
                 }
                 break;
                 // 加载美颜道具
-                case ITEM_ARRAYS_FACE_BEAUTY: {
+                case ITEMS_ARRAY_FACE_BEAUTY: {
                     final int itemFaceBeauty = loadItem(mContext, "face_beautification.bundle");
                     if (itemFaceBeauty <= 0) {
                         Log.w(TAG, "load face beauty item failed");
@@ -933,7 +961,7 @@ public class FURenderer implements OnFaceUnityControlListener {
                     queueEvent(new Runnable() {
                         @Override
                         public void run() {
-                            mItemsArray[ITEM_ARRAYS_FACE_BEAUTY] = itemFaceBeauty;
+                            mItemsArray[ITEMS_ARRAY_FACE_BEAUTY] = itemFaceBeauty;
                             mIsNeedUpdateFaceBeauty = true;
                         }
                     });
