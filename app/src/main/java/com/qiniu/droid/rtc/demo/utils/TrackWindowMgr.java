@@ -7,7 +7,6 @@ import android.widget.FrameLayout;
 import com.qiniu.droid.rtc.QNRTCEngine;
 import com.qiniu.droid.rtc.QNTrackInfo;
 import com.qiniu.droid.rtc.demo.ui.UserTrackView;
-import com.qiniu.droid.rtc.demo.ui.UserTrackViewFullScreen;
 
 import org.webrtc.Logging;
 
@@ -94,7 +93,6 @@ public class TrackWindowMgr {
                 }
             });
         }
-        mEngine.setCaptureVideoCallBack((UserTrackViewFullScreen) mTrackFullScreenWin);
     }
 
     public void addTrackInfo(String userId, List<QNTrackInfo> trackInfoList) {
@@ -314,5 +312,6 @@ public class TrackWindowMgr {
         for (String userId : users) {
             removeTrackWindow(userId);
         }
+        mTrackWindowP2PMode = null;
     }
 }

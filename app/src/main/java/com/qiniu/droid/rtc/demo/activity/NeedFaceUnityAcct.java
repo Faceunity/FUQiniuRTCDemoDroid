@@ -38,7 +38,7 @@ public class NeedFaceUnityAcct extends AppCompatActivity {
         btnToMain.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Intent intent = new Intent(NeedFaceUnityAcct.this, WelcomeActivity.class);
+                Intent intent = new Intent(NeedFaceUnityAcct.this, MainActivity.class);
                 PreferenceUtil.persistString(RTCApplication.getInstance(), PreferenceUtil.KEY_FACEUNITY_ISON,
                         mIsFuOn ? PreferenceUtil.FU_BEAUTY_ON : PreferenceUtil.FU_BEAUTY_OFF);
                 startActivity(intent);

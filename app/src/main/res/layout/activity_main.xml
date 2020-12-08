@@ -69,6 +69,15 @@
         android:paddingBottom="2dp">
 
         <RadioButton
+            android:id="@+id/custom_capture_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:shadowColor="@color/blue"
+            android:text="自采集视频"
+            android:textColor="@color/textColor" />
+
+        <RadioButton
             android:id="@+id/camera_capture_button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -138,7 +147,6 @@
         android:textSize="15sp" />
 
     <TextView
-        android:visibility="gone"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_below="@+id/live_room_btn"
