@@ -17,35 +17,53 @@ public class Config {
     public static final String HEIGHT = "height";
     public static final String FPS = "fps";
     public static final String CODEC_MODE = "encodeMode";
+    public static final String SAMPLE_RATE = "sampleRate";
     public static final String CAPTURE_MODE = "captureMode";
     public static final String BITRATE = "bitrate";
     public static final String MAINTAIN_RES = "maintainRes";
+    public static final String AEC3_ENABLE = "aec3Enable";
 
     public static final int HW = 0;
     public static final int SW = 1;
+    public static final int LOW_SAMPLE_RATE = 0;
+    public static final int HIGH_SAMPLE_RATE = 1;
     public static final int CAMERA_CAPTURE = 0;
     public static final int SCREEN_CAPTURE = 1;
     public static final int ONLY_AUDIO_CAPTURE = 2;
     public static final int MUTI_TRACK_CAPTURE = 3;
+    public static final int CUSTOM_CAPTURE = 4;
 
+    /**
+     * 视频的分辨率，码率和帧率设置会影响到连麦质量；更高的分辨率和帧率也就意味着需要更大的码率和更好的网络环境。
+     *
+     * 首先，建议您根据实际产品情况选择分辨率，在不超过视频源分辨率的情况下更高的分辨率对应着更好的质量，
+     * 在具体数值上，建议您根据下表或者常见的视频分辨率来做设置；
+     * 然后，可以根据您的实际情况来选择帧率，帧率越高更能表现运动画面效果；通常设置为25或者30即可；
+     * 最后，选择合适的码率设置，如果实际场景中有运动情况较多，可以参考下表中选择上限值。
+     *
+     * 如果您需要的分辨率或者帧率不在下表中，可以按比例来推算出一个合适的码率值，如:
+     * A 分辨率 x B 帧率  =  2000kbps
+     * 则：
+     * A / 2 分辨率 x B 帧率 = 1000kbps
+     */
     public static final int[][] DEFAULT_RESOLUTION = {
-            {352, 288},
-            {640, 480},
-            {960, 544},
-            {1280, 720}
+            {352, 288}, // 240p
+            {640, 480}, // 480p
+            {960, 544}, // 540p
+            {1280, 720} // 720p
     };
 
     public static int[] DEFAULT_FPS = {
             15,
-            15,
-            15,
-            20
+            20,
+            25,
+            30
     };
 
     public static int[] DEFAULT_BITRATE = {
-            300 * 1000,
-            400 * 1000,
-            700 * 1000,
-            1000 * 1000
+            600 * 1000,  // (500 - 600kbps)
+            1000 * 1000,  // (900 - 1200kbps)
+            1500 * 1000, // (1400 - 1500kbps)
+            2000 * 1000  // (1800 - 2000kbps)
     };
 }

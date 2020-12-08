@@ -14,7 +14,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.faceunity.nama.FURenderer;
-import com.faceunity.nama.ui.BeautyControlView;
+import com.faceunity.nama.ui.FaceUnityView;
 import com.qiniu.droid.rtc.demo.R;
 
 /**
@@ -25,11 +25,13 @@ public class ControlFragment extends Fragment {
     private ImageButton mDisconnectButton;
     private ImageButton mCameraSwitchButton;
     private ImageButton mToggleMuteButton;
-    //    private ImageButton mToggleBeautyButton;
+    private ImageButton mToggleBeautyButton;
     private ImageButton mToggleSpeakerButton;
     private ImageButton mToggleVideoButton;
     private ImageButton mLogShownButton;
     private LinearLayout mLogView;
+    private TextView mStreamingConfigButton;
+    private TextView mForwardJobButton;
     private TextView mLocalTextViewForVideo;
     private TextView mLocalTextViewForAudio;
     private TextView mRemoteTextView;
@@ -41,6 +43,7 @@ public class ControlFragment extends Fragment {
     private boolean mIsScreenCaptureEnabled = false;
     private boolean mIsAudioOnly = false;
     private FURenderer fuRenderer;
+    private TextView mTvFps;
 
     /**
      * Call control interface for container activity.
@@ -58,6 +61,9 @@ public class ControlFragment extends Fragment {
 
         boolean onToggleBeauty();
 
+        void onCallStreamingConfig();
+
+        void onToggleForwardJob();
     }
 
     public void setScreenCaptureEnabled(boolean isScreenCaptureEnabled) {
@@ -78,13 +84,16 @@ public class ControlFragment extends Fragment {
         mControlView = inflater.inflate(R.layout.fragment_room, container, false);
 
         mDisconnectButton = (ImageButton) mControlView.findViewById(R.id.disconnect_button);
+        mTvFps = (TextView) mControlView.findViewById(R.id.tv_fps);
         mCameraSwitchButton = (ImageButton) mControlView.findViewById(R.id.camera_switch_button);
-//        mToggleBeautyButton = (ImageButton) mControlView.findViewById(R.id.beauty_button);
+        mToggleBeautyButton = (ImageButton) mControlView.findViewById(R.id.beauty_button);
         mToggleMuteButton = (ImageButton) mControlView.findViewById(R.id.microphone_button);
         mToggleSpeakerButton = (ImageButton) mControlView.findViewById(R.id.speaker_button);
         mToggleVideoButton = (ImageButton) mControlView.findViewById(R.id.camera_button);
         mLogShownButton = (ImageButton) mControlView.findViewById(R.id.log_shown_button);
         mLogView = (LinearLayout) mControlView.findViewById(R.id.log_text);
+        mStreamingConfigButton = mControlView.findViewById(R.id.streaming_config_button);
+        mForwardJobButton = mControlView.findViewById(R.id.forward_job_button);
         mLocalTextViewForVideo = (TextView) mControlView.findViewById(R.id.local_log_text_video);
         mLocalTextViewForVideo.setMovementMethod(ScrollingMovementMethod.getInstance());
         mLocalTextViewForAudio = (TextView) mControlView.findViewById(R.id.local_log_text_audio);
@@ -93,11 +102,11 @@ public class ControlFragment extends Fragment {
         mRemoteTextView.setMovementMethod(ScrollingMovementMethod.getInstance());
         mTimer = (Chronometer) mControlView.findViewById(R.id.timer);
 
-        BeautyControlView beautyControlView = (BeautyControlView) mControlView.findViewById(R.id.beauty_view);
+        FaceUnityView faceUnityView = mControlView.findViewById(R.id.faceunity_view);
         if (fuRenderer == null) {
-            beautyControlView.setVisibility(View.GONE);
+            faceUnityView.setVisibility(View.GONE);
         } else {
-            beautyControlView.setOnFaceUnityControlListener(fuRenderer);
+            faceUnityView.setModuleManager(fuRenderer);
         }
 
         mDisconnectButton.setOnClickListener(new View.OnClickListener() {
@@ -116,15 +125,15 @@ public class ControlFragment extends Fragment {
             });
         }
 
-//        if (!mIsScreenCaptureEnabled && !mIsAudioOnly) {
-//            mToggleBeautyButton.setOnClickListener(new View.OnClickListener() {
-//                @Override
-//                public void onClick(View v) {
-//                    boolean enabled = mCallEvents.onToggleBeauty();
-//                    mToggleBeautyButton.setImageResource(enabled ? R.mipmap.face_beauty_open : R.mipmap.face_beauty_close);
-//                }
-//            });
-//        }
+        if (!mIsScreenCaptureEnabled && !mIsAudioOnly) {
+            mToggleBeautyButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    boolean enabled = mCallEvents.onToggleBeauty();
+                    mToggleBeautyButton.setImageResource(enabled ? R.mipmap.face_beauty_open : R.mipmap.face_beauty_close);
+                }
+            });
+        }
 
         mToggleMuteButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -161,6 +170,20 @@ public class ControlFragment extends Fragment {
                 mIsShowingLog = !mIsShowingLog;
             }
         });
+
+        mStreamingConfigButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mCallEvents.onCallStreamingConfig();
+            }
+        });
+
+        mForwardJobButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mCallEvents.onToggleForwardJob();
+            }
+        });
         return mControlView;
     }
 
@@ -190,7 +213,19 @@ public class ControlFragment extends Fragment {
             mRemoteLogText = new StringBuffer();
         }
         if (mLogView != null) {
-            mRemoteTextView.setText(mRemoteLogText.append(logText).append("\n"));
+            mRemoteTextView.setText(mRemoteLogText.append(logText + "\n"));
+        }
+    }
+
+    public void updateForwardJobText(String forwardJobText) {
+        if (mForwardJobButton != null) {
+            mForwardJobButton.setText(forwardJobText);
+        }
+    }
+
+    public void setFps(String fps) {
+        if (mTvFps != null) {
+            mTvFps.setText("FPS: " + fps);
         }
     }
 
@@ -203,6 +238,7 @@ public class ControlFragment extends Fragment {
         }
     }
 
+    @SuppressWarnings("deprecation")
     @Override
     public void onAttach(Activity activity) {
         super.onAttach(activity);
