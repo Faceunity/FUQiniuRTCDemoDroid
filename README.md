@@ -4,7 +4,8 @@ FUQNRTCDemoDroid是集成了 FaceUnity 美颜贴纸功能和 **[七牛实时音�
 
 **这个readme是关于自定义视频对接方式的**
 
-**采用硬编时，在荣耀7上会存在兼容性bug，这个是七牛sdk bug，需要针对该设备单独设置成软编**
+**采用硬编时，在荣耀7上会存在兼容性bug，这个是七牛sdk bug，七牛提供了解决该问题的 sdk包 3.0.1 ，在荣耀7上硬编出现问题时自动切换成软编**
+**使用七牛sdk采集相机数据，并处理的代码在 RoomActivity 与 UserTrackViewFullScreen 类中**
 
 ## 快速集成方法
 
