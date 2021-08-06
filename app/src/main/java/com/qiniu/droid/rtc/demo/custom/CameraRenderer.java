@@ -5,6 +5,7 @@ import android.content.Context;
 import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
+import android.opengl.EGL14;
 import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.os.Handler;
@@ -13,8 +14,18 @@ import android.os.Process;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.faceunity.core.camera.FUCamera;
+import com.faceunity.core.camera.FUCameraPreviewData;
+import com.faceunity.core.entity.FUCameraConfig;
+import com.faceunity.core.entity.FURenderOutputData;
+import com.faceunity.core.enumeration.CameraFacingEnum;
+import com.faceunity.core.enumeration.FUInputTextureEnum;
+import com.faceunity.core.enumeration.FUTransformMatrixEnum;
+import com.faceunity.core.faceunity.OffLineRenderHandler;
+import com.faceunity.core.listener.OnFUCameraListener;
 import com.faceunity.nama.FURenderer;
-import com.faceunity.nama.IFURenderer;
+import com.faceunity.nama.data.FaceUnityDataFactory;
+import com.faceunity.nama.listener.FURendererListener;
 import com.qiniu.droid.rtc.QNRTCEngine;
 import com.qiniu.droid.rtc.QNTrackInfo;
 import com.qiniu.droid.rtc.QNVideoFrame;
@@ -23,95 +34,203 @@ import com.qiniu.droid.rtc.demo.profile.CSVUtils;
 import com.qiniu.droid.rtc.demo.profile.Constant;
 import com.qiniu.droid.rtc.demo.utils.PreferenceUtil;
 
+
 import java.io.File;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * 用户自定义数据采集及数据处理，接入 faceunity 美颜贴纸
  *
  * @author Richie on 2019.12.20
  */
-public class CameraRenderer implements Camera.PreviewCallback {
+public class CameraRenderer {
     private static final String TAG = "CameraRenderer";
     private static final int DEFAULT_CAMERA_WIDTH = 1280;
     private static final int DEFAULT_CAMERA_HEIGHT = 720;
     private static final int PREVIEW_BUFFER_COUNT = 3;
     private Activity mActivity;
-    private Camera mCamera;
-    private byte[][] mPreviewCallbackBuffer;
     private int mCameraWidth = DEFAULT_CAMERA_WIDTH;
     private int mCameraHeight = DEFAULT_CAMERA_HEIGHT;
     private int mCameraFacing = Camera.CameraInfo.CAMERA_FACING_FRONT;
     private int mCameraOrientation = 270;
     private int mCameraTextureId;
-    private SurfaceTexture mSurfaceTexture;
-    private boolean mIsPreviewing;
-    private Handler mBackgroundHandler;
-    private byte[] mReadbackByte;
-    private int mSkippedFrames;
+    private int mSkippedFrames = 5;
     private FURenderer mFURenderer;
     private CSVUtils mCSVUtils;
     private QNRTCEngine mQNRTCEngine;
     private QNTrackInfo mQNTrackInfo;
     private boolean openFU;
+    private FURendererListener mRenderListener;
+    private FaceUnityDataFactory mFaceUnityDataFactory;
+    private FUCamera fuCamera;
+    private OffLineRenderHandler mOffLineRenderHandler;
 
-    public CameraRenderer(Activity activity, FURenderer.OnDebugListener listener, QNRTCEngine engine) {
+    public CameraRenderer(Activity activity, QNRTCEngine engine, FaceUnityDataFactory faceUnityDataFactory, FURendererListener renderListener) {
         mActivity = activity;
         mQNRTCEngine = engine;
+        mRenderListener = renderListener;
+        mFaceUnityDataFactory = faceUnityDataFactory;
         String isOpen = PreferenceUtil.getString(RTCApplication.getInstance(), PreferenceUtil.KEY_FACEUNITY_ISON);
         openFU = PreferenceUtil.FU_BEAUTY_ON.equals(isOpen);
-        FURenderer.setup(activity);
-        mFURenderer = new FURenderer.Builder(activity)
-                .setCreateEglContext(true)
-                .setInputTextureType(IFURenderer.INPUT_TEXTURE_EXTERNAL_OES)
-                .setCameraFacing(mCameraFacing)
-                .setRunBenchmark(true)
-                .setOnDebugListener(listener)
-                .setInputImageOrientation(CameraUtils.getCameraOrientation(mCameraFacing))
-                .build();
+        FURenderer.getInstance().setup(activity);
+        mFURenderer = FURenderer.getInstance();
+        mFURenderer.setMarkFPSEnable(true);
+        mFURenderer.setInputTextureType(FUInputTextureEnum.FU_ADM_FLAG_EXTERNAL_OES_TEXTURE);
+        mFURenderer.setCameraFacing(CameraFacingEnum.CAMERA_FRONT);
+        mFURenderer.setInputOrientation(CameraUtils.getCameraOrientation(Camera.CameraInfo.CAMERA_FACING_FRONT));
+        mFURenderer.setInputBufferMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+        mFURenderer.setInputTextureMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+        mFURenderer.setOutputMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+        mFURenderer.setCreateEGLContext(true);
+
+
+        fuCamera = FUCamera.getInstance();
+        mOffLineRenderHandler = OffLineRenderHandler.getInstance();
     }
 
     public FURenderer getFURenderer() {
         return mFURenderer;
     }
 
+    private volatile byte[] mInputBuffer;
+    private Object mInputBufferLock = new Object();
+
+
+    private byte[] getCurrentBuffer() {
+        synchronized (mInputBufferLock) {
+            byte[] currentInputBuffer = new byte[mInputBuffer.length];
+            System.arraycopy(mInputBuffer, 0, currentInputBuffer, 0, currentInputBuffer.length);
+            return currentInputBuffer;
+        }
+    }
+
+    private OnFUCameraListener onFUCameraListener = new OnFUCameraListener() {
+        @Override
+        public void onPreviewFrame(FUCameraPreviewData fuCameraPreviewData) {
+            if (!openFU) {
+                QNVideoFrame frame = new QNVideoFrame();
+                frame.buffer = fuCameraPreviewData.getBuffer();
+                frame.height = mCameraHeight;
+                frame.width = mCameraWidth;
+                frame.rotation = mCameraOrientation;
+                frame.timestampNs = System.nanoTime();
+                Log.e(TAG, "onPreviewFrame: send data");
+                mQNRTCEngine.pushVideoBuffer(mQNTrackInfo.getTrackId(), frame);
+                return;
+            }
+            synchronized (mInputBufferLock) {
+                mInputBuffer = new byte[fuCameraPreviewData.getBuffer().length];
+                System.arraycopy(fuCameraPreviewData.getBuffer(), 0, mInputBuffer, 0, mInputBuffer.length);
+            }
+            mOffLineRenderHandler.requestRender();
+        }
+    };
+
+    private OffLineRenderHandler.Renderer mOffLineRenderHandlerRedner = new OffLineRenderHandler.Renderer() {
+        @Override
+        public void onDrawFrame() {
+            if (mInputBuffer == null) {
+                return;
+            }
+            SurfaceTexture surfaceTexture = fuCamera.getSurfaceTexture();
+            try {
+                surfaceTexture.updateTexImage();
+            } catch (Exception e) {
+                e.printStackTrace();
+                return;
+            }
+            int orientation = mCameraOrientation;
+            long start = System.nanoTime();
+            FURenderOutputData outputData;
+            byte[] inputBuffer = getCurrentBuffer();
+            if (!mFaceUnityDataFactory.isHasMakeupLoaded()) {
+                outputData = mFURenderer.onDrawFrameInputWithReturn(inputBuffer, mCameraTextureId, mCameraWidth, mCameraHeight);
+                Log.e(TAG, "onPreviewFrame: dual" + EGL14.eglGetCurrentContext());
+            } else {
+                outputData = mFURenderer.onDrawFrameInputWithReturn(inputBuffer, 0, mCameraWidth, mCameraHeight);
+                Log.e(TAG, "onPreviewFrame: single" + EGL14.eglGetCurrentContext());
+            }
+            long time = System.nanoTime() - start;
+            mCSVUtils.writeCsv(null, time);
+            if (mSkippedFrames > 0 || mFaceUnityDataFactory.getSkipFrames() > 0) {
+                mSkippedFrames--;
+            } else {
+                if (mPostHandler != null && orientation == mCameraOrientation) {
+                    mPostHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            QNVideoFrame frame = new QNVideoFrame();
+                            frame.buffer = outputData == null ? inputBuffer : outputData.getImage().getBuffer();
+                            frame.height = mCameraHeight;
+                            frame.width = mCameraWidth;
+                            frame.rotation = mCameraOrientation;
+                            frame.timestampNs = System.nanoTime();
+                            long start = System.currentTimeMillis();
+                            mQNRTCEngine.pushVideoBuffer(mQNTrackInfo.getTrackId(), frame);
+                            long time = System.currentTimeMillis() - start;
+                            Log.e(TAG, "run: pushTime: " + time);
+                        }
+                    });
+                }
+            }
+        }
+    };
+
     public void onResume() {
         startBackgroundThread();
-        mBackgroundHandler.post(new Runnable() {
+        mOffLineRenderHandler.onResume();
+        mOffLineRenderHandler.setRenderer(mOffLineRenderHandlerRedner);
+        mOffLineRenderHandler.queueEvent(new Runnable() {
             @Override
             public void run() {
                 if (mFURenderer != null) {
-                    mFURenderer.onSurfaceCreated();
+                    mFURenderer.prepareRenderer(mRenderListener);
                 }
                 initCsvUtil(mActivity);
                 mCameraTextureId = GlUtil.createTextureObject(GLES11Ext.GL_TEXTURE_EXTERNAL_OES);
-                openCamera(mCameraFacing);
-                startPreview();
+                FUCameraConfig config = new FUCameraConfig();
+                config.setCameraFacing(mCameraFacing == Camera.CameraInfo.CAMERA_FACING_FRONT ? CameraFacingEnum.CAMERA_FRONT : CameraFacingEnum.CAMERA_BACK);
+                fuCamera.openCamera(config, mCameraTextureId, onFUCameraListener);
             }
         });
     }
 
     public void onPause() {
-        if (mBackgroundHandler == null) {
+        if (mPostHandler == null) {
             return;
         }
-        mBackgroundHandler.post(new Runnable() {
+        CountDownLatch countDownLatch = new CountDownLatch(1);
+        mOffLineRenderHandler.queueEvent(new Runnable() {
             @Override
             public void run() {
-                releaseCamera();
+                fuCamera.closeCamera();
                 if (mCameraTextureId > 0) {
                     GLES20.glDeleteTextures(1, new int[]{mCameraTextureId}, 0);
                     mCameraTextureId = 0;
                 }
                 if (mFURenderer != null) {
-                    mFURenderer.onSurfaceDestroyed();
+                    mFURenderer.release();
                 }
                 mCSVUtils.close();
+                countDownLatch.countDown();
             }
         });
+        try {
+            countDownLatch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        mOffLineRenderHandler.onPause();
         stopBackgroundThread();
+        mSkippedFrames = 5;
+    }
+
+    public void onDestroy() {
+        fuCamera.releaseCamera();
     }
 
     public void setQNTrackInfo(QNTrackInfo QNTrackInfo) {
@@ -123,180 +242,36 @@ public class CameraRenderer implements Camera.PreviewCallback {
      */
     public void switchCamera() {
         Log.d(TAG, "switchCamera: ");
-        mBackgroundHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                boolean isFront = mCameraFacing == Camera.CameraInfo.CAMERA_FACING_FRONT;
-                mCameraFacing = isFront ? Camera.CameraInfo.CAMERA_FACING_BACK : Camera.CameraInfo.CAMERA_FACING_FRONT;
-                releaseCamera();
-                mSkippedFrames = 3;
-                openCamera(mCameraFacing);
-                startPreview();
-                if (mFURenderer != null) {
-                    mFURenderer.onCameraChanged(mCameraFacing, mCameraOrientation);
-                    if (mFURenderer.getMakeupModule() != null) {
-                        mFURenderer.getMakeupModule().setIsMakeupFlipPoints(mCameraFacing == Camera.CameraInfo.CAMERA_FACING_FRONT ? 0 : 1);
-                    }
-                }
-            }
-        });
-    }
+        fuCamera.switchCamera();
+        boolean isFront = mCameraFacing == Camera.CameraInfo.CAMERA_FACING_FRONT;
+        mCameraFacing = isFront ? Camera.CameraInfo.CAMERA_FACING_BACK : Camera.CameraInfo.CAMERA_FACING_FRONT;
+        mSkippedFrames = 5;
+        if (mFURenderer != null) {
+            mFURenderer.setCameraFacing(mCameraFacing == Camera.CameraInfo.CAMERA_FACING_FRONT ? CameraFacingEnum.CAMERA_FRONT : CameraFacingEnum.CAMERA_BACK);
+            mFURenderer.setInputOrientation(CameraUtils.getCameraOrientation(mCameraFacing));
 
-    @Override
-    public void onPreviewFrame(byte[] data, Camera camera) {
-        mCamera.addCallbackBuffer(data);
-        mSurfaceTexture.updateTexImage();
-
-        if (!openFU) {
-            QNVideoFrame frame = new QNVideoFrame();
-            frame.buffer = data;
-            frame.height = mCameraHeight;
-            frame.width = mCameraWidth;
-            frame.rotation = mCameraOrientation;
-            frame.timestampNs = System.nanoTime();
-            Log.e(TAG, "onPreviewFrame: send data");
-            mQNRTCEngine.pushVideoBuffer(mQNTrackInfo.getTrackId(), frame);
-            return;
-        }
-
-        long start = System.nanoTime();
-        mFURenderer.onDrawFrameDualInput(data, mCameraTextureId, mCameraWidth, mCameraHeight,
-                mReadbackByte, mCameraWidth, mCameraHeight);
-        long time = System.nanoTime() - start;
-        mCSVUtils.writeCsv(null, time);
-        if (mSkippedFrames > 0) {
-            mSkippedFrames--;
-        } else {
-            if (mPostHandler != null) {
-                mPostHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        QNVideoFrame frame = new QNVideoFrame();
-                        frame.buffer = mReadbackByte;
-                        frame.height = mCameraHeight;
-                        frame.width = mCameraWidth;
-                        frame.rotation = mCameraOrientation;
-                        frame.timestampNs = System.nanoTime();
-                        long start = System.currentTimeMillis();
-                        mQNRTCEngine.pushVideoBuffer(mQNTrackInfo.getTrackId(), frame);
-                        long time = System.currentTimeMillis() - start;
-                        Log.e(TAG, "run: pushTime: " + time);
-                    }
-                });
-            }
-        }
-    }
-
-    private void openCamera(int cameraFacing) {
-        try {
-            Camera.CameraInfo info = new Camera.CameraInfo();
-            int cameraId = Camera.CameraInfo.CAMERA_FACING_BACK;
-            int numCameras = Camera.getNumberOfCameras();
-            if (numCameras <= 0) {
-                throw new RuntimeException("No cameras");
-            }
-            for (int i = 0; i < numCameras; i++) {
-                Camera.getCameraInfo(i, info);
-                if (info.facing == cameraFacing) {
-                    cameraId = i;
-                    mCamera = Camera.open(i);
-                    mCameraFacing = cameraFacing;
-                    break;
-                }
-            }
-            if (mCamera == null) {
-                cameraId = Camera.CameraInfo.CAMERA_FACING_BACK;
-                Camera.getCameraInfo(cameraId, info);
-                mCamera = Camera.open(cameraId);
-                mCameraFacing = cameraId;
+            if (mCameraFacing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
+                mFURenderer.setInputBufferMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+                mFURenderer.setInputTextureMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+                mFURenderer.setOutputMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+            }else {
+                mFURenderer.setInputBufferMatrix(FUTransformMatrixEnum.CCROT0);
+                mFURenderer.setInputTextureMatrix(FUTransformMatrixEnum.CCROT0);
+                mFURenderer.setOutputMatrix(FUTransformMatrixEnum.CCROT0_FLIPHORIZONTAL);
             }
 
-            mCameraOrientation = info.orientation;
-            CameraUtils.setCameraDisplayOrientation(mActivity, cameraId, mCamera);
-            Camera.Parameters parameters = mCamera.getParameters();
-            parameters.setPreviewFormat(ImageFormat.NV21);
-            CameraUtils.setFocusModes(parameters);
-            int[] size = CameraUtils.choosePreviewSize(parameters, mCameraWidth, mCameraHeight);
-            mCameraWidth = size[0];
-            mCameraHeight = size[1];
-            mCamera.setParameters(parameters);
-            Log.d(TAG, "openCamera. facing: " + (cameraId == Camera.CameraInfo.CAMERA_FACING_BACK
-                    ? "back" : "front") + ", orientation:" + mCameraOrientation + ", cameraWidth:" + mCameraWidth
-                    + ", cameraHeight:" + mCameraHeight);
-        } catch (Exception e) {
-            Log.e(TAG, "openCamera: ", e);
-            releaseCamera();
-            mActivity.runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    Toast.makeText(mActivity, "打开相机失败", Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
-    }
-
-    private void startPreview() {
-        if (mCameraTextureId <= 0 || mCamera == null || mIsPreviewing) {
-            return;
-        }
-        try {
-            mCamera.stopPreview();
-            if (mPreviewCallbackBuffer == null) {
-                mPreviewCallbackBuffer = new byte[PREVIEW_BUFFER_COUNT][mCameraWidth * mCameraHeight
-                        * ImageFormat.getBitsPerPixel(ImageFormat.NV21) / 8];
-            }
-            if (mReadbackByte == null) {
-                mReadbackByte = new byte[mCameraWidth * mCameraHeight * ImageFormat.getBitsPerPixel(ImageFormat.NV21) / 8];
-            }
-            mCamera.setPreviewCallbackWithBuffer(this);
-            for (int i = 0; i < PREVIEW_BUFFER_COUNT; i++) {
-                mCamera.addCallbackBuffer(mPreviewCallbackBuffer[i]);
-            }
-            mSurfaceTexture = new SurfaceTexture(mCameraTextureId);
-            mCamera.setPreviewTexture(mSurfaceTexture);
-            mCamera.startPreview();
-            mIsPreviewing = true;
-            Log.d(TAG, "startPreview: cameraTexId:" + mCameraTextureId);
-        } catch (Exception e) {
-            Log.e(TAG, "startPreview: ", e);
-        }
-    }
-
-    private void releaseCamera() {
-        Log.d(TAG, "releaseCamera()");
-        try {
-            mIsPreviewing = false;
-            if (mCamera != null) {
-                mCamera.stopPreview();
-                mCamera.setPreviewTexture(null);
-                mCamera.setPreviewCallbackWithBuffer(null);
-                mCamera.release();
-                mCamera = null;
-            }
-            if (mSurfaceTexture != null) {
-                mSurfaceTexture.release();
-                mSurfaceTexture = null;
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "releaseCamera: ", e);
         }
     }
 
     private Handler mPostHandler;
-    private void startBackgroundThread() {
-        HandlerThread backgroundThread = new HandlerThread("camera_thread", Process.THREAD_PRIORITY_BACKGROUND);
-        backgroundThread.start();
-        mBackgroundHandler = new Handler(backgroundThread.getLooper());
 
+    private void startBackgroundThread() {
         HandlerThread handlerThread = new HandlerThread("poster");
         handlerThread.start();
         mPostHandler = new Handler(handlerThread.getLooper());
     }
 
     private void stopBackgroundThread() {
-        mBackgroundHandler.getLooper().quitSafely();
-        mBackgroundHandler = null;
-
         mPostHandler.getLooper().quitSafely();
         mPostHandler = null;
     }
@@ -311,9 +286,9 @@ public class CameraRenderer implements Camera.PreviewCallback {
         String filePath = Constant.filePath + dateStrDir + File.separator + "excel-" + dateStrFile + ".csv";
         Log.d(TAG, "initLog: CSV file path:" + filePath);
         StringBuilder headerInfo = new StringBuilder();
-        headerInfo.append("version：").append(FURenderer.getVersion()).append(CSVUtils.COMMA)
+        headerInfo.append("version：").append(FURenderer.getInstance().getVersion()).append(CSVUtils.COMMA)
                 .append("机型：").append(android.os.Build.MANUFACTURER).append(android.os.Build.MODEL)
-                .append("处理方式：Texture").append(CSVUtils.COMMA);
+                .append("处理方式：双输入返回Buffer").append(CSVUtils.COMMA);
         mCSVUtils.initHeader(filePath, headerInfo);
     }
 
