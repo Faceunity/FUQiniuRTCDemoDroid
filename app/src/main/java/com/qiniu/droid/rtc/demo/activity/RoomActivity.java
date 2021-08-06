@@ -20,6 +20,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.v4.content.ContextCompat;
+import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.RecyclerView;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -32,8 +33,13 @@ import android.view.WindowManager;
 import android.widget.PopupWindow;
 import android.widget.Toast;
 
+import com.faceunity.core.enumeration.CameraFacingEnum;
+import com.faceunity.core.enumeration.FUAIProcessorEnum;
+import com.faceunity.core.enumeration.FUInputTextureEnum;
+import com.faceunity.core.enumeration.FUTransformMatrixEnum;
 import com.faceunity.nama.FURenderer;
-import com.faceunity.nama.utils.CameraUtils;
+import com.faceunity.nama.data.FaceUnityDataFactory;
+import com.faceunity.nama.listener.FURendererListener;
 import com.qiniu.droid.rtc.QNBeautySetting;
 import com.qiniu.droid.rtc.QNCameraSwitchResultCallback;
 import com.qiniu.droid.rtc.QNCustomMessage;
@@ -51,6 +57,7 @@ import com.qiniu.droid.rtc.QNTrackKind;
 import com.qiniu.droid.rtc.QNVideoFormat;
 import com.qiniu.droid.rtc.demo.R;
 import com.qiniu.droid.rtc.demo.RTCApplication;
+import com.qiniu.droid.rtc.demo.custom.CameraUtils;
 import com.qiniu.droid.rtc.demo.fragment.ControlFragment;
 import com.qiniu.droid.rtc.demo.model.RTCRoomUsersMergeOption;
 import com.qiniu.droid.rtc.demo.model.RTCTrackMergeOption;
@@ -83,7 +90,7 @@ import static com.qiniu.droid.rtc.demo.utils.Config.DEFAULT_BITRATE;
 import static com.qiniu.droid.rtc.demo.utils.Config.DEFAULT_FPS;
 import static com.qiniu.droid.rtc.demo.utils.Config.DEFAULT_RESOLUTION;
 
-public class RoomActivity extends Activity implements QNRTCEngineEventListener, ControlFragment.OnCallEvents, SensorEventListener {
+public class RoomActivity extends AppCompatActivity implements QNRTCEngineEventListener, ControlFragment.OnCallEvents, SensorEventListener {
     private static final String TAG = "RoomActivity";
     private static final int BITRATE_FOR_SCREEN_VIDEO = (int) (1.5 * 1000 * 1000);
 
@@ -133,6 +140,7 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
     private TrackWindowMgr mTrackWindowMgr;
     // faceunity 美颜贴纸
     private FURenderer fuRenderer;
+    private FaceUnityDataFactory mFaceUnityDataFactory;
     private SensorManager mSensorManager;
 
     /**
@@ -213,7 +221,7 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
 
         initFURenderer();
         mTrackWindowFullScreen = (UserTrackViewFullScreen) findViewById(R.id.track_window_full_screen);
-        mTrackWindowFullScreen.setFuRenderer(fuRenderer);
+        mTrackWindowFullScreen.setFuData(fuRenderer, mFURendererListener);
         mTrackWindowsList = new LinkedList<UserTrackView>(Arrays.asList(
                 (UserTrackView) findViewById(R.id.track_window_a),
                 (UserTrackView) findViewById(R.id.track_window_b),
@@ -240,7 +248,8 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
 
         // 初始化控制面板
         mControlFragment = new ControlFragment();
-        mControlFragment.setFuRenderer(fuRenderer);
+        mFaceUnityDataFactory = new FaceUnityDataFactory(0);
+        mControlFragment.setFaceUnityDataFactory(mFaceUnityDataFactory);
         mControlFragment.setArguments(intent.getExtras());
         FragmentTransaction ft = getFragmentManager().beginTransaction();
         ft.add(R.id.control_fragment_container, mControlFragment);
@@ -272,31 +281,50 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
         mTrackWindowMgr.addTrackInfo(mUserId, localTrackListExcludeScreenTrack);
     }
 
+    private FURendererListener mFURendererListener = new FURendererListener() {
+
+        @Override
+        public void onPrepare() {
+            mFaceUnityDataFactory.bindCurrentRenderer();
+        }
+
+        @Override
+        public void onTrackStatusChanged(FUAIProcessorEnum type, int status) {
+            Log.e(TAG, "onTrackStatusChanged: 人脸数: " + status);
+        }
+
+        @Override
+        public void onFpsChanged(double fps, double callTime) {
+            final String FPS = String.format(Locale.getDefault(), "%.2f", fps);
+            Log.e(TAG, "onFpsChanged: FPS " + FPS + " callTime " + String.format(Locale.getDefault(), "%.2f", callTime));
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (mControlFragment != null) {
+                        mControlFragment.setFps(FPS);
+                    }
+                }
+            });
+        }
+
+        @Override
+        public void onRelease() {
+        }
+    };
+
+
     private void initFURenderer() {
         String isOpen = PreferenceUtil.getString(RTCApplication.getInstance(), PreferenceUtil.KEY_FACEUNITY_ISON);
         if (PreferenceUtil.FU_BEAUTY_ON.equals(isOpen)) {
-            FURenderer.setup(this);
-            fuRenderer = new FURenderer.Builder(this)
-                    .setInputTextureType(FURenderer.INPUT_TEXTURE_2D)
-                    .setCameraFacing(Camera.CameraInfo.CAMERA_FACING_FRONT)
-                    .setInputImageOrientation(CameraUtils.getCameraOrientation(Camera.CameraInfo.CAMERA_FACING_FRONT))
-                    .setRunBenchmark(true)
-                    .setOnDebugListener(new FURenderer.OnDebugListener() {
-                        @Override
-                        public void onFpsChanged(double fps, double callTime) {
-                            final String FPS = String.format(Locale.getDefault(), "%.2f", fps);
-                            Log.e(TAG, "onFpsChanged: FPS " + FPS + " callTime " + String.format(Locale.getDefault(), "%.2f", callTime));
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    if (mControlFragment != null) {
-                                        mControlFragment.setFps(FPS);
-                                    }
-                                }
-                            });
-                        }
-                    })
-                    .build();
+            FURenderer.getInstance().setup(this);
+            fuRenderer = FURenderer.getInstance();
+            fuRenderer.setInputTextureType(FUInputTextureEnum.FU_ADM_FLAG_COMMON_TEXTURE);
+            fuRenderer.setMarkFPSEnable(true);
+            fuRenderer.setInputTextureMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+            fuRenderer.setInputBufferMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+            fuRenderer.setOutputMatrix(FUTransformMatrixEnum.CCROT0);
+            fuRenderer.setCameraFacing(CameraFacingEnum.CAMERA_FRONT);
+            fuRenderer.setInputOrientation(CameraUtils.getCameraOrientation(Camera.CameraInfo.CAMERA_FACING_FRONT));
             mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
         }
     }
@@ -1152,9 +1180,17 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
                     mTrackWindowFullScreen.setToSwitchCamera(false);
                     int cameraId = isFrontCamera ? Camera.CameraInfo.CAMERA_FACING_FRONT : Camera.CameraInfo.CAMERA_FACING_BACK;
                     if (fuRenderer != null) {
-                        fuRenderer.onCameraChanged(cameraId, CameraUtils.getCameraOrientation(cameraId));
-                        //修改点位镜像
-                        fuRenderer.getMakeupModule().setIsMakeupFlipPoints(isFrontCamera ? 0 : 1);
+                        fuRenderer.setCameraFacing(cameraId == Camera.CameraInfo.CAMERA_FACING_FRONT ? CameraFacingEnum.CAMERA_FRONT : CameraFacingEnum.CAMERA_BACK);
+                        fuRenderer.setInputOrientation(CameraUtils.getCameraOrientation(cameraId));
+                        if (cameraId == Camera.CameraInfo.CAMERA_FACING_FRONT) {
+                            fuRenderer.setInputTextureMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+                            fuRenderer.setInputBufferMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+                            fuRenderer.setOutputMatrix(FUTransformMatrixEnum.CCROT0);
+                        }else {
+                            fuRenderer.setInputTextureMatrix(FUTransformMatrixEnum.CCROT0);
+                            fuRenderer.setInputBufferMatrix(FUTransformMatrixEnum.CCROT0);
+                            fuRenderer.setOutputMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+                        }
                     }
                 }
 
@@ -1282,9 +1318,9 @@ public class RoomActivity extends Activity implements QNRTCEngineEventListener, 
             float y = event.values[1];
             if (Math.abs(x) > 3 || Math.abs(y) > 3) {
                 if (Math.abs(x) > Math.abs(y)) {
-                    fuRenderer.onDeviceOrientationChanged(x > 0 ? 0 : 180);
+                    fuRenderer.setDeviceOrientation(x > 0 ? 0 : 180);
                 } else {
-                    fuRenderer.onDeviceOrientationChanged(y > 0 ? 90 : 270);
+                    fuRenderer.setDeviceOrientation(y > 0 ? 90 : 270);
                 }
             }
         }

@@ -2,6 +2,7 @@ package com.qiniu.droid.rtc.demo.ui;
 
 import android.content.Context;
 import android.content.res.Resources;
+import android.os.Environment;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.text.TextUtils;
@@ -15,13 +16,18 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.qiniu.droid.rtc.QNRTCEngine;
+import com.qiniu.droid.rtc.QNRenderVideoCallback;
 import com.qiniu.droid.rtc.QNSurfaceView;
 import com.qiniu.droid.rtc.QNTrackInfo;
 import com.qiniu.droid.rtc.QNTrackKind;
+import com.qiniu.droid.rtc.QNUtil;
 import com.qiniu.droid.rtc.demo.R;
+import com.qiniu.droid.rtc.demo.custom.PictureFetcher;
 
 import org.webrtc.RendererCommon;
+import org.webrtc.VideoFrame;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -361,6 +367,32 @@ public class UserTrackView extends FrameLayout {
         mVideoViewLargeParent = findViewById(R.id.qn_surface_view_large_parent);
         mSurfaceViewLarge = (QNSurfaceView) findViewById(R.id.qn_surface_view_large);
 
+        //为排查oppoR7远端订阅绿屏的测试代码
+        mSurfaceViewLarge.setRenderVideoCallback(new QNRenderVideoCallback() {
+
+            @Override
+            public void onRenderingFrame(VideoFrame videoFrame) {
+
+                Log.e(TAG, "onSaveSuccess: start " + PictureFetcher.sGet);
+                if (!PictureFetcher.sGet) {
+                    return;
+                }
+                PictureFetcher.sGet = false;
+                File file = new File(Environment.getExternalStoragePublicDirectory("FaceUnity") + File.separator + System.currentTimeMillis() + "test.jpg");
+
+                QNUtil.saveFrame(videoFrame, file.getAbsolutePath(), new QNUtil.FrameSavedCallback() {
+                    @Override
+                    public void onSaveSuccess() {
+                        Log.e(TAG, "onSaveSuccess: ");
+                    }
+
+                    @Override
+                    public void onSaveError(String s) {
+                        Log.e(TAG, "onSaveError: ");
+                    }
+                });
+            }
+        });
         mVideoViewSmallParent = findViewById(R.id.qn_surface_view_small_parent);
         mSurfaceViewSmall = (QNSurfaceView) findViewById(R.id.qn_surface_view_small);
 

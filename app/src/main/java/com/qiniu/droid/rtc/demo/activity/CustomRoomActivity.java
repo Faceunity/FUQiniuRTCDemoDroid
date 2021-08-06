@@ -32,7 +32,10 @@ import android.view.WindowManager;
 import android.widget.PopupWindow;
 import android.widget.Toast;
 
+import com.faceunity.core.enumeration.FUAIProcessorEnum;
 import com.faceunity.nama.FURenderer;
+import com.faceunity.nama.data.FaceUnityDataFactory;
+import com.faceunity.nama.listener.FURendererListener;
 import com.qiniu.droid.rtc.QNBeautySetting;
 import com.qiniu.droid.rtc.QNCustomMessage;
 import com.qiniu.droid.rtc.QNErrorCode;
@@ -50,6 +53,7 @@ import com.qiniu.droid.rtc.QNVideoFormat;
 import com.qiniu.droid.rtc.demo.R;
 import com.qiniu.droid.rtc.demo.RTCApplication;
 import com.qiniu.droid.rtc.demo.custom.CameraRenderer;
+import com.qiniu.droid.rtc.demo.custom.PictureFetcher;
 import com.qiniu.droid.rtc.demo.fragment.ControlFragment;
 import com.qiniu.droid.rtc.demo.model.RTCRoomUsersMergeOption;
 import com.qiniu.droid.rtc.demo.model.RTCTrackMergeOption;
@@ -76,6 +80,8 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+
+import javax.xml.datatype.DatatypeFactory;
 
 import static com.qiniu.droid.rtc.demo.utils.Config.DEFAULT_BITRATE;
 import static com.qiniu.droid.rtc.demo.utils.Config.DEFAULT_FPS;
@@ -131,6 +137,7 @@ public class CustomRoomActivity extends AppCompatActivity implements QNRTCEngine
     private TrackWindowMgr mTrackWindowMgr;
     // faceunity 美颜贴纸
     private FURenderer fuRenderer;
+    private FaceUnityDataFactory mFaceUnityDataFactory;
     private SensorManager mSensorManager;
     private CameraRenderer mCameraRenderer;
 
@@ -244,7 +251,7 @@ public class CustomRoomActivity extends AppCompatActivity implements QNRTCEngine
                 return;
             }
         }
-
+        mFaceUnityDataFactory = new FaceUnityDataFactory(0);
         // 初始化 rtcEngine 和本地 TrackInfo 列表
         initQNRTCEngine();
         // 初始化本地音视频 track
@@ -262,13 +269,17 @@ public class CustomRoomActivity extends AppCompatActivity implements QNRTCEngine
 
         // 初始化控制面板
         mControlFragment = new ControlFragment();
-        mControlFragment.setFuRenderer(fuRenderer);
+        mControlFragment.setFaceUnityDataFactory(mFaceUnityDataFactory);
         mControlFragment.setArguments(intent.getExtras());
         FragmentTransaction ft = getFragmentManager().beginTransaction();
         ft.add(R.id.control_fragment_container, mControlFragment);
         ft.commitAllowingStateLoss();
     }
 
+    //为排查oppoR7远端订阅绿屏的测试代码
+    public void imageGet(View view) {
+        PictureFetcher.sGet = true;
+    }
 
     @Override
     protected void onResume() {
@@ -301,6 +312,7 @@ public class CustomRoomActivity extends AppCompatActivity implements QNRTCEngine
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        mCameraRenderer.onDestroy();
         if (mEngine != null) {
             if (mIsAdmin && mIsMergeJobStreaming) {
                 // 如果当前正在合流，则停止
@@ -358,29 +370,47 @@ public class CustomRoomActivity extends AppCompatActivity implements QNRTCEngine
                 .setExternalVideoInputEnabled(true)
                 .setVideoPreviewFormat(format);
         mEngine = QNRTCEngine.createEngine(getApplicationContext(), setting, this);
-        mCameraRenderer = new CameraRenderer(this, new FURenderer.OnDebugListener() {
-            @Override
-            public void onFpsChanged(double fps, double callTime) {
-                final String FPS = String.format(Locale.getDefault(), "%.2f", fps);
-                Log.e(TAG, "onFpsChanged: FPS " + FPS + " callTime " + String.format(Locale.getDefault(), "%.2f", callTime));
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (mControlFragment != null) {
-                            mControlFragment.setFps(FPS);
-                        }
-                    }
-                });
-            }
-        }, mEngine);
+        mCameraRenderer = new CameraRenderer(this, mEngine, mFaceUnityDataFactory, mFURendererListener);
         String isOpen = PreferenceUtil.getString(RTCApplication.getInstance(), PreferenceUtil.KEY_FACEUNITY_ISON);
         if (PreferenceUtil.FU_BEAUTY_ON.equals(isOpen)) {
             fuRenderer = mCameraRenderer.getFURenderer();
         }
         if (fuRenderer != null) {
             mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+            fuRenderer.setReadBackSync(true);
         }
     }
+
+    private FURendererListener mFURendererListener = new FURendererListener() {
+
+        @Override
+        public void onPrepare() {
+            mFaceUnityDataFactory.bindCurrentRenderer();
+        }
+
+        @Override
+        public void onTrackStatusChanged(FUAIProcessorEnum type, int status) {
+            Log.e(TAG, "onTrackStatusChanged: 人脸数: " + status);
+        }
+
+        @Override
+        public void onFpsChanged(double fps, double callTime) {
+            final String FPS = String.format(Locale.getDefault(), "%.2f", fps);
+            Log.e(TAG, "onFpsChanged: FPS " + FPS + " callTime " + String.format(Locale.getDefault(), "%.2f", callTime));
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (mControlFragment != null) {
+                        mControlFragment.setFps(FPS);
+                    }
+                }
+            });
+        }
+
+        @Override
+        public void onRelease() {
+        }
+    };
 
     /**
      * 初始化本地音视频 track
@@ -715,7 +745,7 @@ public class CustomRoomActivity extends AppCompatActivity implements QNRTCEngine
      */
     @Override
     public void onRoomStateChanged(QNRoomState state) {
-        Log.i(TAG, "onRoomStateChanged:" + state.name());
+        Log.i("benyqTest", "onRoomStateChanged:" + state.name());
         switch (state) {
             case IDLE:
                 if (mIsAdmin) {
@@ -786,6 +816,7 @@ public class CustomRoomActivity extends AppCompatActivity implements QNRTCEngine
      */
     @Override
     public void onRemoteUserLeft(final String remoteUserId) {
+        Log.e("benyqTest", "onRemoteUserLeft: " + remoteUserId);
         updateRemoteLogText("onRemoteUserLeft:remoteUserId = " + remoteUserId);
         if (mIsAdmin) {
             userLeftForStreaming(remoteUserId);
@@ -1267,9 +1298,9 @@ public class CustomRoomActivity extends AppCompatActivity implements QNRTCEngine
             float y = event.values[1];
             if (Math.abs(x) > 3 || Math.abs(y) > 3) {
                 if (Math.abs(x) > Math.abs(y)) {
-                    fuRenderer.onDeviceOrientationChanged(x > 0 ? 0 : 180);
+                    fuRenderer.setDeviceOrientation(x > 0 ? 0 : 180);
                 } else {
-                    fuRenderer.onDeviceOrientationChanged(y > 0 ? 90 : 270);
+                    fuRenderer.setDeviceOrientation(y > 0 ? 90 : 270);
                 }
             }
         }

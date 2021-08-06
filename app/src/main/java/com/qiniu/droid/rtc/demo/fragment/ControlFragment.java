@@ -14,6 +14,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.faceunity.nama.FURenderer;
+import com.faceunity.nama.data.FaceUnityDataFactory;
 import com.faceunity.nama.ui.FaceUnityView;
 import com.qiniu.droid.rtc.demo.R;
 
@@ -42,7 +43,7 @@ public class ControlFragment extends Fragment {
     private boolean mIsShowingLog = false;
     private boolean mIsScreenCaptureEnabled = false;
     private boolean mIsAudioOnly = false;
-    private FURenderer fuRenderer;
+    private FaceUnityDataFactory mFaceUnityDataFactory;
     private TextView mTvFps;
 
     /**
@@ -70,8 +71,8 @@ public class ControlFragment extends Fragment {
         mIsScreenCaptureEnabled = isScreenCaptureEnabled;
     }
 
-    public void setFuRenderer(FURenderer fuRenderer) {
-        this.fuRenderer = fuRenderer;
+    public void setFaceUnityDataFactory(FaceUnityDataFactory dataFactory) {
+        this.mFaceUnityDataFactory = dataFactory;
     }
 
     public void setAudioOnly(boolean isAudioOnly) {
@@ -103,10 +104,10 @@ public class ControlFragment extends Fragment {
         mTimer = (Chronometer) mControlView.findViewById(R.id.timer);
 
         FaceUnityView faceUnityView = mControlView.findViewById(R.id.faceunity_view);
-        if (fuRenderer == null) {
+        if (mFaceUnityDataFactory == null) {
             faceUnityView.setVisibility(View.GONE);
         } else {
-            faceUnityView.setModuleManager(fuRenderer);
+            faceUnityView.bindDataFactory(mFaceUnityDataFactory);
         }
 
         mDisconnectButton.setOnClickListener(new View.OnClickListener() {
