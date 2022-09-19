@@ -2,6 +2,8 @@ package com.qiniu.droid.rtc.demo;
 
 import android.app.Application;
 
+import com.faceunity.FUConfig;
+import com.faceunity.nama.utils.FuDeviceUtils;
 import com.qiniu.droid.rtc.QNLogLevel;
 import com.qiniu.droid.rtc.QNRTCEnv;
 import com.qiniu.droid.rtc.demo.utils.Utils;
@@ -14,6 +16,8 @@ public class RTCApplication extends Application {
     public void onCreate() {
         super.onCreate();
         rtcApplication = this;
+
+        FUConfig.DEVICE_LEVEL = FuDeviceUtils.judgeDeviceLevel(this);
 
         QNRTCEnv.setLogLevel(QNLogLevel.INFO);
         /**
