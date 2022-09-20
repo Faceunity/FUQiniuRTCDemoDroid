@@ -122,9 +122,11 @@ public class CameraRenderer {
                 mQNRTCEngine.pushVideoBuffer(mQNTrackInfo.getTrackId(), frame);
                 return;
             }
-            synchronized (mInputBufferLock) {
-                mInputBuffer = new byte[fuCameraPreviewData.getBuffer().length];
-                System.arraycopy(fuCameraPreviewData.getBuffer(), 0, mInputBuffer, 0, mInputBuffer.length);
+            if (fuCameraPreviewData != null) {
+                synchronized (mInputBufferLock) {
+                    mInputBuffer = new byte[fuCameraPreviewData.getBuffer().length];
+                    System.arraycopy(fuCameraPreviewData.getBuffer(), 0, mInputBuffer, 0, mInputBuffer.length);
+                }
             }
             mOffLineRenderHandler.requestRender();
         }
