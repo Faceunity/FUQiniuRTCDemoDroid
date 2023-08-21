@@ -2,10 +2,13 @@ package com.qiniu.droid.rtc.demo.profile;
 
 import android.app.ActivityManager;
 import android.content.Context;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Process;
 import android.util.Log;
+
+import androidx.annotation.RequiresApi;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -57,6 +60,10 @@ public class CSVUtils {
                 .append("渲染耗时").append(COMMA)
                 .append("CPU").append(COMMA)
                 .append("内存").append(COMMA);
+//                .append("远端分辨率").append(COMMA)
+//                .append("远端渲染帧率").append(COMMA)
+//                .append("远端解码帧率").append(COMMA)
+//                .append("远端接收码率").append(COMMA);
         if (headerInfo != null) {
             stringBuilder.append(headerInfo);
         }
@@ -100,13 +107,13 @@ public class CSVUtils {
 
                     StringBuilder stringBuilder = new StringBuilder();
                     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss:SSS", Locale.getDefault());
-
                     stringBuilder.append(dateFormat.format(new Date(mTimestamp))).append(COMMA)
                             .append(String.format(Locale.getDefault(), "%.2f", mAverageFps)).append(COMMA)
                             .append(String.format(Locale.getDefault(), "%.2f", mAverageRenderTime)).append(COMMA)
                             .append(strCPU).append(COMMA)
                             .append(strMemory).append(COMMA);
-
+                    Log.d(TAG, "Fps:" + String.format(Locale.getDefault(), "%.2f", mAverageFps)
+                            + "    Render Time:" + String.format(Locale.getDefault(), "%.2f", mAverageRenderTime));
                     if (extraInfo != null) {
                         stringBuilder.append(extraInfo);
                     }
@@ -130,6 +137,7 @@ public class CSVUtils {
         }
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     public void close() {
         Log.d(TAG, "close: ");
         mHandler.post(new Runnable() {

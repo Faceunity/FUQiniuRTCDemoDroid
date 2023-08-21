@@ -1,8 +1,6 @@
 package com.faceunity.nama.data;
 
-
-
-import android.support.annotation.NonNull;
+import androidx.annotation.NonNull;
 
 import com.faceunity.core.entity.FUBundleData;
 import com.faceunity.core.faceunity.FURenderKit;

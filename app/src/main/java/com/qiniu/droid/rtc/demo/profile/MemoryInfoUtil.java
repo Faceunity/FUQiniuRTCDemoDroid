@@ -2,7 +2,8 @@ package com.qiniu.droid.rtc.demo.profile;
 
 import android.os.Build;
 import android.os.Debug;
-import android.support.annotation.RequiresApi;
+
+import androidx.annotation.RequiresApi;
 
 import java.lang.reflect.Field;
 

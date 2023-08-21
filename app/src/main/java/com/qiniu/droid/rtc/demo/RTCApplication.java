@@ -1,35 +1,66 @@
 package com.qiniu.droid.rtc.demo;
 
 import android.app.Application;
+import android.content.Context;
+import android.util.Log;
 
-import com.faceunity.FUConfig;
+import com.faceunity.nama.FUConfig;
+import com.faceunity.nama.FURenderer;
 import com.faceunity.nama.utils.FuDeviceUtils;
-import com.qiniu.droid.rtc.QNLogLevel;
-import com.qiniu.droid.rtc.QNRTCEnv;
+import com.qiniu.droid.rtc.QNFileLogHelper;
+import com.qiniu.droid.rtc.demo.utils.ToastUtils;
 import com.qiniu.droid.rtc.demo.utils.Utils;
 
-public class RTCApplication extends Application {
+import java.io.File;
 
-    private static RTCApplication rtcApplication;
+import xcrash.TombstoneManager;
+import xcrash.XCrash;
+
+public class RTCApplication extends Application {
+    private static final String TAG = "RTCApplication";
+
+    @Override
+    protected void attachBaseContext(Context base) {
+        super.attachBaseContext(base);
+
+        Log.i(TAG, "external file path = " + getExternalFilesDir(null));
+        XCrash.init(this, new XCrash.InitParameters()
+                .setLogDir(getExternalFilesDir(null).getAbsolutePath())
+                .setJavaDumpNetworkInfo(false)
+                .setNativeDumpNetwork(false)
+                .setNativeDumpAllThreads(false)
+                .setAppVersion(Utils.getVersion(this)));
+        checkToUploadCrashFiles();
+    }
 
     @Override
     public void onCreate() {
         super.onCreate();
-        rtcApplication = this;
-
-        FUConfig.DEVICE_LEVEL = FuDeviceUtils.judgeDeviceLevel(this);
-
-        QNRTCEnv.setLogLevel(QNLogLevel.INFO);
-        /**
-         * init must be called before any other func
-         */
-        QNRTCEnv.init(getApplicationContext());
-        QNRTCEnv.setLogFileEnabled(true);
-        // 设置自定义 DNS manager，不设置则使用 SDK 默认 DNS 服务
-        QNRTCEnv.setDnsManager(Utils.getDefaultDnsManager(getApplicationContext()));
+        FURenderer.getInstance().setup(this);
+        FUConfig.DEVICE_LEVEL = FuDeviceUtils.judgeDeviceLevelGPU();
     }
 
-    public static RTCApplication getInstance() {
-        return rtcApplication;
+    private void checkToUploadCrashFiles() {
+        File crashFolder = new File(getExternalFilesDir(null).getAbsolutePath());
+        File[] crashFiles = crashFolder.listFiles();
+        if (crashFiles == null) {
+            return;
+        }
+        for (File crashFile : crashFiles) {
+            if (crashFile.isFile() && crashFile.getName().contains("xcrash")) {
+                QNFileLogHelper.getInstance().reportLogFileByPath(crashFile.getPath(), new QNFileLogHelper.LogReportCallback() {
+                    @Override
+                    public void onReportSuccess(String name) {
+                        ToastUtils.showShortToast(RTCApplication.this, "崩溃日志已上传！");
+                        TombstoneManager.deleteTombstone(crashFile.getPath());
+                    }
+
+                    @Override
+                    public void onReportError(String name, String errorMsg) {
+                        ToastUtils.showShortToast(RTCApplication.this, "崩溃日志上传失败 : " + errorMsg);
+                    }
+                });
+            }
+        }
     }
 }
