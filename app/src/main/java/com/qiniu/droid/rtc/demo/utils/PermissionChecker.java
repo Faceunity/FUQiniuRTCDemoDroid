@@ -14,7 +14,7 @@ import java.util.List;
 public class PermissionChecker {
     private static final int REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS = 124;
 
-    private Activity mActivity;
+    private final Activity mActivity;
 
     public PermissionChecker(Activity activity) {
         mActivity = activity;
@@ -54,9 +54,8 @@ public class PermissionChecker {
             permissionsNeeded.add("MICROPHONE");
         }
         if (!addPermission(permissionsList, Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
-            permissionsNeeded.add("Write external storage");
+            permissionsNeeded.add("WRITE_EXTERNAL_STORAGE");
         }
-
         if (permissionsNeeded.size() > 0) {
             // Need Rationale
             String message = "You need to grant access to " + permissionsNeeded.get(0);
@@ -65,14 +64,10 @@ public class PermissionChecker {
             }
             // Check for Rationale Option
             if (!mActivity.shouldShowRequestPermissionRationale(permissionsList.get(0))) {
-                showMessageOKCancel(message,
-                        new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-                                mActivity.requestPermissions(permissionsList.toArray(new String[permissionsList.size()]),
-                                        REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS);
-                            }
-                        });
+                showMessageOKCancel(message, (dialog, which) -> {
+                    mActivity.requestPermissions(permissionsList.toArray(new String[permissionsList.size()]),
+                            REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS);
+                });
             }
             else {
                 mActivity.requestPermissions(permissionsList.toArray(new String[permissionsList.size()]),
@@ -109,7 +104,7 @@ public class PermissionChecker {
                 // all permissions granted
             } else {
                 // some permissions denied
-                //ToastUtils.s(mActivity, "some permissions denied");
+                ToastUtils.showShortToast(mActivity, "Some permissions is not approved !!!");
             }
         }
     }

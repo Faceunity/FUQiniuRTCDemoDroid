@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
  */
 
 public class Constant {
-    public static final String APP_NAME = "QNHYRTC";
+    public static final String APP_NAME = "FuQNRTCDemo";
     public static final String filePath = Environment.getExternalStoragePublicDirectory("")
             + File.separator + "FaceUnity" + File.separator + APP_NAME + File.separator;
 

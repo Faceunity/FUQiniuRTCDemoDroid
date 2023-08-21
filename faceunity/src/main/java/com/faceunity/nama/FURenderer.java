@@ -10,12 +10,15 @@ import com.faceunity.core.entity.FURenderOutputData;
 import com.faceunity.core.enumeration.CameraFacingEnum;
 import com.faceunity.core.enumeration.FUAIProcessorEnum;
 import com.faceunity.core.enumeration.FUAITypeEnum;
+import com.faceunity.core.enumeration.FUTransformMatrixEnum;
+import com.faceunity.core.faceunity.FUAIKit;
 import com.faceunity.core.faceunity.FURenderConfig;
 import com.faceunity.core.faceunity.FURenderKit;
 import com.faceunity.core.faceunity.FURenderManager;
 import com.faceunity.core.utils.CameraUtils;
 import com.faceunity.core.utils.FULogger;
 import com.faceunity.nama.listener.FURendererListener;
+import com.faceunity.nama.utils.FuDeviceUtils;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -37,7 +40,6 @@ public class FURenderer extends IFURenderer {
             synchronized (FURenderer.class) {
                 if (INSTANCE == null) {
                     INSTANCE = new FURenderer();
-                    INSTANCE.mFURenderKit = FURenderKit.getInstance();
                 }
             }
         }
@@ -51,7 +53,9 @@ public class FURenderer extends IFURenderer {
 
 
     /* 特效FURenderKit*/
-    private FURenderKit mFURenderKit;
+    private FURenderKit mFURenderKit = FURenderKit.getInstance();
+    /* 特效FURenderKit*/
+    private FUAIKit mFUAIKit = FUAIKit.getInstance();
 
     /* AI道具*/
     private String BUNDLE_AI_FACE = "model" + File.separator + "ai_face_processor.bundle";
@@ -67,6 +71,7 @@ public class FURenderer extends IFURenderer {
     /* 清除队列标识 */
     private volatile boolean mClearQueue = false;
 
+    private HashMap<Integer, CameraFacingEnum> cameraOrientationMap = new HashMap<>();
 
     /*检测类型*/
     private FUAIProcessorEnum aIProcess = FUAIProcessorEnum.FACE_PROCESSOR;
@@ -92,8 +97,14 @@ public class FURenderer extends IFURenderer {
             @Override
             public void onSuccess(int i, String s) {
                 if (i == FURenderConfig.OPERATE_SUCCESS_AUTH) {
-                    mFURenderKit.getFUAIController().loadAIProcessor(BUNDLE_AI_FACE, FUAITypeEnum.FUAITYPE_FACEPROCESSOR);
-                    mFURenderKit.getFUAIController().loadAIProcessor(BUNDLE_AI_HUMAN, FUAITypeEnum.FUAITYPE_HUMAN_PROCESSOR);
+                    mFURenderKit.setUseTexAsync(true);
+                    mFUAIKit.loadAIProcessor(BUNDLE_AI_FACE, FUAITypeEnum.FUAITYPE_FACEPROCESSOR);
+                    mFUAIKit.loadAIProcessor(BUNDLE_AI_HUMAN, FUAITypeEnum.FUAITYPE_HUMAN_PROCESSOR);
+
+                    int cameraFrontOrientation = CameraUtils.INSTANCE.getCameraOrientation(Camera.CameraInfo.CAMERA_FACING_FRONT);
+                    int cameraBackOrientation = CameraUtils.INSTANCE.getCameraOrientation(Camera.CameraInfo.CAMERA_FACING_BACK);
+                    cameraOrientationMap.put(cameraFrontOrientation, CameraFacingEnum.CAMERA_FRONT);
+                    cameraOrientationMap.put(cameraBackOrientation, CameraFacingEnum.CAMERA_BACK);
                 }
             }
 
@@ -279,6 +290,24 @@ public class FURenderer extends IFURenderer {
     @Override
     public void setDeviceOrientation(int deviceOrientation) {
         super.setDeviceOrientation(deviceOrientation);
+    }
+
+    @Override
+    public void setInputOrientation(int inputOrientation) {
+        if (cameraOrientationMap.containsKey(inputOrientation)) {
+            CameraFacingEnum cameraFacingEnum = cameraOrientationMap.get(inputOrientation);
+            setCameraFacing(cameraFacingEnum);
+            if (cameraFacingEnum == CameraFacingEnum.CAMERA_FRONT) {
+                setInputTextureMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+                setInputBufferMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+                setOutputMatrix(FUTransformMatrixEnum.CCROT0);
+            } else {
+                setInputBufferMatrix(FUTransformMatrixEnum.CCROT0);
+                setInputTextureMatrix(FUTransformMatrixEnum.CCROT0);
+                setOutputMatrix(FUTransformMatrixEnum.CCROT0_FLIPVERTICAL);
+            }
+        }
+        super.setInputOrientation(inputOrientation);
     }
 
     /**
