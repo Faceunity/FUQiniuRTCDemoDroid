@@ -37,7 +37,7 @@ public class RTCApplication extends Application {
     public void onCreate() {
         super.onCreate();
         FURenderer.getInstance().setup(this);
-        FUConfig.DEVICE_LEVEL = FuDeviceUtils.judgeDeviceLevelGPU();
+        FUConfig.DEVICE_LEVEL = FuDeviceUtils.judgeDeviceLevel(true);
     }
 
     private void checkToUploadCrashFiles() {
