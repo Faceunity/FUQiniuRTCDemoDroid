@@ -110,14 +110,6 @@ public class BodyBeautyDataFactory extends AbstractBodyBeautyDataFactory {
         }
     }
 
-    @Override
-    public boolean isBodyBeautyEnabled() {
-        if (mFURenderKit.getBodyBeauty() != null) {
-            return mFURenderKit.getBodyBeauty().getEnable();
-        }
-        return true;
-    }
-
     /*模型映射设置模型值*/
     private final HashMap<String, BodyBeautySetParamInterface> bodyBeautySetMapping = new HashMap<String, BodyBeautySetParamInterface>() {
         {
@@ -129,6 +121,7 @@ public class BodyBeautyDataFactory extends AbstractBodyBeautyDataFactory {
             put(BodyBeautyParam.HEAD_SLIM_INTENSITY, value -> getCurrentBodyBeautyModel().setHeadSlimIntensity(value));
             put(BodyBeautyParam.LEG_SLIM_INTENSITY, value -> getCurrentBodyBeautyModel().setLegSlimIntensity(value));
             put(BodyBeautyParam.BREAST_INTENSITY, value -> getCurrentBodyBeautyModel().setBreastIntensity(value));
+            put(BodyBeautyParam.SWAN_INTENSITY, value -> getCurrentBodyBeautyModel().setSwanIntensity(value));
         }
     };
 
@@ -143,7 +136,7 @@ public class BodyBeautyDataFactory extends AbstractBodyBeautyDataFactory {
             put(BodyBeautyParam.HEAD_SLIM_INTENSITY, () -> getCurrentBodyBeautyModel().getHeadSlimIntensity());
             put(BodyBeautyParam.LEG_SLIM_INTENSITY, () -> getCurrentBodyBeautyModel().getLegSlimIntensity());
             put(BodyBeautyParam.BREAST_INTENSITY, ()->getCurrentBodyBeautyModel().getBreastIntensity());
-
+            put(BodyBeautyParam.SWAN_INTENSITY, ()->getCurrentBodyBeautyModel().getSwanIntensity());
         }
     };
 
