@@ -579,7 +579,7 @@ public class RoomActivity extends FragmentActivity implements ControlFragment.On
                             Log.d(TAG, String.format("onTextureFrameAvailable: textureID: %d, width: %d, height: %d, rotation: %d, glcontext: " + EGL14.eglGetCurrentContext(), textureID, width, height, rotation));
 
                             fuRenderer.setInputOrientation(rotation);
-                            if (FUConfig.DEVICE_LEVEL > FuDeviceUtils.DEVICE_LEVEL_MID) {
+                            if (FUConfig.DEVICE_LEVEL > FuDeviceUtils.DEVICE_LEVEL_TWO) {
                                 cheekFaceNum();
                             }
                             long start =  System.nanoTime();

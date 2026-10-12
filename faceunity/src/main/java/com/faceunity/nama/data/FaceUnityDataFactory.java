@@ -57,7 +57,7 @@ public class FaceUnityDataFactory {
         hasFaceBeautyOrFilterLoaded = needBindFaceBeauty;
         //高端机开启小脸检测
         FUAIKit.getInstance().faceProcessorSetFaceLandmarkQuality(FUConfig.DEVICE_LEVEL);
-        if (FUConfig.DEVICE_LEVEL  > FuDeviceUtils.DEVICE_LEVEL_MID)
+        if (FUConfig.DEVICE_LEVEL  > FuDeviceUtils.DEVICE_LEVEL_TWO)
             FUAIKit.getInstance().fuFaceProcessorSetDetectSmallFace(true);
         //选中哪一项加载哪一项道具
         switch (currentFunctionIndex) {
@@ -82,7 +82,7 @@ public class FaceUnityDataFactory {
                 break;
         }
         //补充没有选中某项但是需要做效果则靠下面这个逻辑
-        if (hasFaceBeautyOrFilterLoaded && (currentFunctionIndex != 0 || currentFunctionIndex != 1 ||currentFunctionIndex != 2)) {
+        if (hasFaceBeautyOrFilterLoaded) {
             mFaceBeautyAndFilterDataFactory.bindCurrentRenderer();
         }
         if (hasPropLoaded && currentFunctionIndex != 3) {
@@ -145,13 +145,5 @@ public class FaceUnityDataFactory {
                 mFURenderer.setAIProcessTrackType(FUAIProcessorEnum.HUMAN_PROCESSOR);
                 break;
         }
-    }
-    public boolean isHasMakeupLoaded() {
-        return currentFunctionIndex == 2;
-    }
-
-    private int mSkipFrames = 0;
-    public int getSkipFrames() {
-        return mSkipFrames--;
     }
 }
